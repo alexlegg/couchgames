@@ -1,6 +1,6 @@
 module Main where
 
-import           Example (runApp)
+import           CouchGames.Server (runApp)
 
 main :: IO ()
 main = runApp
