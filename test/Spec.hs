@@ -9,7 +9,7 @@ import           Data.Aeson (Value(..), object, (.=), (.:), Object(..), decode, 
 import           Network.Wai.Test (SResponse(..))
 import           Network.HTTP.Types.Status
 
-import           CouchGames.Server (appTest)
+import           CouchGames.Server
 import           CouchGames.Player
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.HashMap.Strict as HM
@@ -20,7 +20,10 @@ main = hspec spec
 
 spec :: Spec
 spec = do
-    with appTest $ do
+    config  <- runIO $ getConfig
+    conn    <- runIO $ connectToDatabase config
+    runIO $ flushDatabase conn
+    with (appTest conn) $ do
         describe "GET /" $ do
             it "responds with 200" $ do
                 get "/" `shouldRespondWith` 200

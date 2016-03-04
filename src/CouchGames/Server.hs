@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies #-}
-module CouchGames.Server (runApp, appTest) where
+module CouchGames.Server (runApp, appTest, getConfig, connectToDatabase, flushDatabase) where
 
 import           Data.Aeson (Value(..), object, (.=))
 import           Data.Int
@@ -68,13 +68,17 @@ newUser = "users" <//> "register"
 
 {- End User API -}
 
-appTest :: IO Application
-appTest = do
-    config      <- C.parseConfig "config.yaml"
-    conn        <- connectToDatabase config
-    destroyUserBackend conn
+-- This is for testing only.
+appTest :: Connection -> IO Application
+appTest conn = do
     initUserBackend conn
     spockAsApp (app' conn)
+
+getConfig :: IO (Maybe C.Config)
+getConfig = C.parseConfig "config.yaml"
+
+flushDatabase :: Connection -> IO ()
+flushDatabase = destroyUserBackend
 
 runApp :: IO ()
 runApp = do
