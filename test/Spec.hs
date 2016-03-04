@@ -45,6 +45,7 @@ spec = do
             it "fails to get an invalid id" $ do
                 get "/users/1" `shouldRespondWith` [json|{code: 1, message:"User not found"}|] {matchStatus = 404}
 
+        describe "POST /users/register" $ do
             it "creates a user" $ do
                 (SResponse s _ b) <- postHtmlForm "/users/register" [("name", "test_username"), ("email", "test@test.com"), ("password", "pass1234")]
                 liftIO $ statusCode s `shouldBe` 200
@@ -60,6 +61,15 @@ spec = do
             it "fails to create a duplicate user" $ do
                 postHtmlForm "/users/register" [("name", "test_username"), ("email", "test2@test.com"), ("password", "1223pass")]
                     `shouldRespondWith` [json|{code: 4, message: "Username already taken"}|] {matchStatus = 404}
+
+        describe "POST /users/login" $ do
+            it "returns a token for a valid user" $ do
+                postHtmlForm "/users/login" [("name", "test_username"), ("password", "pass1234")]
+                    `shouldRespondWith` 200
+
+            it "returns an error for an invalid user" $ do
+                postHtmlForm "/users/login" [("name", "test_username"), ("password", "badpassword")]
+                    `shouldRespondWith` [json|{code: 7, message: "Bad login"}|] {matchStatus = 404}
 
 data GetUserR = GetUserR
     { gurUserId :: Int

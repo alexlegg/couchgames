@@ -43,6 +43,17 @@ app' conn = spockT id $ do
                     _                           -> sendError 6 "Unspecified error"
             _                                   -> sendError 2 "Missing parameters"
 
+    post loginUser $ do
+        userName        <- param "name"
+        userPassword    <- param "password"
+        case (userName, userPassword) of
+            (Just n, Just p)    -> do
+                s <- liftIO $ authUser conn n (PasswordPlain p) (60 * 60 * 24 * 365)
+                case s of
+                    Just sessId -> json $ object ["sessionId" .= sessId]
+                    Nothing     -> sendError 7 "Bad login"
+            _                   -> sendError 7 "Bad login"
+
 sendError errorCode msg = do
     setStatus notFound404
     json $ object ["code" .= Number errorCode, "message" .= String msg]
@@ -65,6 +76,9 @@ getUser = "users" <//> var
 
 newUser :: Path '[]
 newUser = "users" <//> "register" 
+
+loginUser :: Path '[]
+loginUser = "users" <//> "login"
 
 {- End User API -}
 
