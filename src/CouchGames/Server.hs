@@ -1,11 +1,13 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies, FlexibleContexts #-}
 module CouchGames.Server (runApp, appTest, getConfig, connectToDatabase, flushDatabase) where
 
-import           Data.Aeson (Value(..), object, (.=))
+import           Data.Aeson (Value(..), object, (.=), (.:))
+import qualified Data.Aeson as Aeson
 import           Data.Int
 import           Data.Maybe
 import qualified Data.Text as T
 import           Network.Wai (Application, Middleware)
+import           Network.Wai.Handler.Warp (run)
 import           Network.HTTP.Types.Status
 import           Web.Users.Types
 import           Web.Users.Postgresql ()
@@ -13,14 +15,23 @@ import           Web.Spock.Safe
 import           Control.Monad.IO.Class
 import           Database.PostgreSQL.Simple
 import qualified CouchGames.Config as C
+import           Network.Wai.Middleware.Static
+import qualified Network.EngineIO.Wai as EIOWai
+import qualified Control.Concurrent.STM as STM
+import qualified Network.SocketIO as SocketIO
 
-app' :: Connection -> IO Middleware
-app' conn = spockT id $ do
+app' :: Connection -> SpockT IO ()
+app' conn = do
+    middleware $ staticPolicy (noDots >-> addBase "static")
+
     get "/" $ do
-        text "hello"
+        file "text/html" "static/index.html"
 
     get "/some-json" $ do
         json $ object ["foo" .= Number 23, "bar" .= Number 42]
+
+    get "/socket.io" $ middlewarePass
+    post "/socket.io" $ middlewarePass
 
     get getUser $ \userId -> do
         u <- liftIO $ (getUserById conn userId :: IO (Maybe CouchUser))
@@ -86,7 +97,7 @@ loginUser = "users" <//> "login"
 appTest :: Connection -> IO Application
 appTest conn = do
     initUserBackend conn
-    spockAsApp (app' conn)
+    spockAsApp (spockT id (app' conn))
 
 getConfig :: IO (Maybe C.Config)
 getConfig = C.parseConfig "config.yaml"
@@ -94,12 +105,16 @@ getConfig = C.parseConfig "config.yaml"
 flushDatabase :: Connection -> IO ()
 flushDatabase = destroyUserBackend
 
+-- Runs Spock as middleware wrapped around the SocketIO WAI Application
 runApp :: IO ()
 runApp = do
     config      <- C.parseConfig "config.yaml"
     conn        <- connectToDatabase config
     initUserBackend conn
-    runSpock 80 (app' conn)
+    state       <- ServerState <$> STM.newTVarIO 0
+    sock        <- SocketIO.initialize EIOWai.waiAPI (server state)
+    web         <- spockT id (app' conn)
+    run 8080 (web (EIOWai.toWaiApplication sock))
 
 connectToDatabase (Just config) = do
     connect defaultConnectInfo
@@ -107,3 +122,21 @@ connectToDatabase (Just config) = do
         , connectUser       = C.dbUser config
         , connectPassword   = C.dbPassword config }
 
+data ServerState = ServerState (STM.TVar Int)
+
+server state = do
+    liftIO $ putStrLn "server"
+
+    SocketIO.on "test" $ \(Something x) -> do
+        liftIO $ putStrLn "recvd test"
+        liftIO $ putStrLn (show x)
+        SocketIO.emit "testing" (Something "abc")
+
+data Something = Something T.Text
+
+instance Aeson.ToJSON Something where
+    toJSON (Something i) = Aeson.object [ "something" .= i ]
+
+instance Aeson.FromJSON Something where
+    parseJSON = Aeson.withObject "something" $ \s ->
+                    Something <$> s .: "something"

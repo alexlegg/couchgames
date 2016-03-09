@@ -23,6 +23,7 @@ library
                      , aeson
                      , Spock
                      , wai
+                     , warp
                      , users
                      , postgresql-simple
                      , users-postgresql-simple
@@ -31,6 +32,11 @@ library
                      , transformers
                      , text
                      , http-types
+                     , engine-io
+                     , engine-io-wai
+                     , socket-io
+                     , stm
+                     , wai-middleware-static
   default-language:    Haskell2010
 
 executable couchgames-exe
