@@ -19,6 +19,9 @@ import           Network.Wai.Middleware.Static
 import qualified Network.EngineIO.Wai as EIOWai
 import qualified Control.Concurrent.STM as STM
 import qualified Network.SocketIO as SocketIO
+import           Fay.Convert
+
+import           CouchGames.Player
 
 app' :: Connection -> SpockT IO ()
 app' conn = do
@@ -126,13 +129,15 @@ data ServerState = ServerState (STM.TVar Int)
 
 server state = do
     liftIO $ putStrLn "server"
+    let p = Player 2 "sdfsdf" "name"
 
     SocketIO.on "test" $ \(Something x) -> do
         liftIO $ putStrLn "recvd test"
         liftIO $ putStrLn (show x)
+        SocketIO.emit "player" (showToFay p)
         SocketIO.emit "testing" (Something "abc")
 
-data Something = Something T.Text
+data Something = Something { something :: T.Text }
 
 instance Aeson.ToJSON Something where
     toJSON (Something i) = Aeson.object [ "something" .= i ]
