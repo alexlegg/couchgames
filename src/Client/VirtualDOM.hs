@@ -10,14 +10,15 @@ module VirtualDOM
     ) where
 
 import FFI
+import Data.Text
 
 data VTree
 data VPatch
 data Dom
 
-data VirtualDom = VirtualTree VTree | VirtualText String
+data VirtualDom = VirtualTree VTree | VirtualText Text
 
-h :: String -> [(String, String)] -> [VirtualDom] -> VTree
+h :: Text -> [(Text, Text)] -> [VirtualDom] -> VTree
 h = ffi "h_wrapper(%1, %2, %3)"
 
 diff :: VTree -> VTree -> VPatch

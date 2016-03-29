@@ -38,6 +38,7 @@ library
                      , stm
                      , wai-middleware-static
                      , fay
+                     , vector
   default-language:    Haskell2010
 
 executable couchgames-exe

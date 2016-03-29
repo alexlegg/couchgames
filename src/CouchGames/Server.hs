@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies, FlexibleContexts, ExistentialQuantification #-}
 module CouchGames.Server (runApp, appTest, getConfig, connectToDatabase, flushDatabase) where
 
 import           Data.Aeson (Value(..), object, (.=), (.:))
@@ -19,9 +19,12 @@ import           Network.Wai.Middleware.Static
 import qualified Network.EngineIO.Wai as EIOWai
 import qualified Control.Concurrent.STM as STM
 import qualified Network.SocketIO as SocketIO
+import qualified Data.Vector as V
 import           Fay.Convert
+import           Data.Data
 
 import           CouchGames.Player
+import           CouchGames.Session
 
 app' :: Connection -> SpockT IO ()
 app' conn = do
@@ -131,17 +134,14 @@ server state = do
     liftIO $ putStrLn "server"
     let p = Player 2 "sdfsdf" "name"
 
-    SocketIO.on "test" $ \(Something x) -> do
-        liftIO $ putStrLn "recvd test"
-        liftIO $ putStrLn (show x)
+    SocketIO.on "join lobby" $ do
+        liftIO $ putStrLn "join lobby"
         SocketIO.emit "player" (showToFay p)
-        SocketIO.emit "testing" (Something "abc")
 
-data Something = Something { something :: T.Text }
+    onFay "cookie" $ \(DumbType i) -> do
+        liftIO $ putStrLn (show i)
 
-instance Aeson.ToJSON Something where
-    toJSON (Something i) = Aeson.object [ "something" .= i ]
-
-instance Aeson.FromJSON Something where
-    parseJSON = Aeson.withObject "something" $ \s ->
-                    Something <$> s .: "something"
+onFay eventName handler = SocketIO.onJSON eventName $ \arr -> do
+    case (readFromFay (V.head arr)) of
+        Just x -> handler x
+        Nothing -> return ()
