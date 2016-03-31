@@ -1,4 +1,4 @@
-{-# LANGUAGE EmptyDataDecls, OverloadedStrings, RebindableSyntax #-}
+{-# LANGUAGE EmptyDataDecls, OverloadedStrings, RebindableSyntax, RecordWildCards #-}
 module Hello where
 
 import Prelude
@@ -16,29 +16,22 @@ data Event
 alert :: Text -> Fay ()
 alert = ffi "alert(%1)"
 
-setBodyHtml :: Dom -> Fay ()
-setBodyHtml = ffi "document.body.appendChild(%1)"
-
-setBodyHtml' :: Text -> Fay ()
-setBodyHtml' = ffi "document.body.innerHTML = %1"
-
 addWindowEvent :: Text -> (Event -> Fay ()) -> Fay ()
 addWindowEvent = ffi "window.addEventListener(%1, %2)"
-
-greet :: Event -> Fay ()
-greet event = do
-  print "The document has loaded"
-  setBodyHtml' "Hello HTML!"
 
 main :: Fay ()
 main = do
     print "Hello Console2!"
     addWindowEvent "load" $ \evt -> do
+        -- Initialise virtual dom
+        dom <- createElement (render (PageUserRegister "" "" ""))
+        newRootNode dom
+
         sock <- connect "http://localhost:8080"
 
         on sock "connect" $ \_ -> do
             print "connected"
-            emit sock "cookie" (DumbType 123)
+            emit sock "cookie" (SessionCookie "thisismycookie")
 
 
         emit sock "join lobby" "test"
@@ -47,18 +40,60 @@ main = do
             print $ append "Received player: " n
             print $ append "Received player: " (pack (show id))
             print $ append "Received player: " s
-        
-        let inp     = h "input" [("type", "text"), ("value", "foo")] []
-        let h1      = h "h1" [] [VirtualText "Test!"]
-        let tree    = h "div" [] [VirtualTree inp, VirtualTree h1]
-        dom         <- createElement tree
-        setBodyHtml dom
-
-        addWindowEvent "click" $ \_ -> do
-            let tree'   = h "div" [] [VirtualTree h1, VirtualTree inp]
-            let p       = diff tree tree'
-            dom'        <- patch dom p
-            return ()
 
         return ()
+
+
+data PageState =
+    PageUserRegister
+        { purUsername       :: Text
+        , purEmail          :: Text
+        , purPassword       :: Text
+        }
+    | PageUserLogin
+        { pulUsername       :: Text
+        , pulPassword       :: Text
+        }
+
+render :: PageState -> VirtualDom
+render (PageUserRegister{..}) =
+    h "div" []
+        [ h "table" []
+            [ h "tr" []
+                [ h "td" [] [ ht "Username" ]
+                , h "td" [] 
+                    [ (h "input" [ ("type", "text"), ("value", purUsername) ] []) ]
+                ]
+            , h "tr" []
+                [ h "td" [] [ ht "Password" ]
+                , h "td" [] 
+                    [ (h "input" [ ("type", "password"), ("value", purPassword) ] []) ]
+                ]
+            ]
+        ]
+
+getVTree :: Fay VirtualDom
+getVTree = ffi "window.virtualTree"
+
+putVTree :: VirtualDom -> Fay ()
+putVTree = ffi "window.virtualTree = %1"
+
+newRootNode :: Dom -> Fay ()
+newRootNode = ffi "window.rootNode = document.body.appendChild(%1)"
+
+putRootNode :: Dom -> Fay ()
+putRootNode = ffi "window.rootNode = %1"
+
+getRootNode :: Fay Dom
+getRootNode = ffi "window.rootNode"
+
+updateDom :: PageState -> Fay ()
+updateDom ps = do
+    t       <- getVTree
+    let t'  = render ps
+    let p   = diff t t'
+    root    <- getRootNode
+    root'   <- patch root p
+    putRootNode root'
+    putVTree t'
 

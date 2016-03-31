@@ -138,8 +138,8 @@ server state = do
         liftIO $ putStrLn "join lobby"
         SocketIO.emit "player" (showToFay p)
 
-    onFay "cookie" $ \(DumbType i) -> do
-        liftIO $ putStrLn (show i)
+    onFay "cookie" $ \(SessionCookie sc) -> do
+        liftIO $ putStrLn (show sc)
 
 onFay eventName handler = SocketIO.onJSON eventName $ \arr -> do
     case (readFromFay (V.head arr)) of

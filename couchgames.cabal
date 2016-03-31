@@ -19,6 +19,7 @@ library
                      , CouchGames.Player
                      , CouchGames.Lobby
                      , CouchGames.Config
+                     , CouchGames.Session
   build-depends:       base >= 4.7 && < 5
                      , aeson
                      , Spock
