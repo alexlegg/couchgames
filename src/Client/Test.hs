@@ -11,8 +11,6 @@ import CouchGames.Player
 import CouchGames.Lobby
 import CouchGames.Session
 
-data Event
-
 alert :: Text -> Fay ()
 alert = ffi "alert(%1)"
 
@@ -20,80 +18,83 @@ addWindowEvent :: Text -> (Event -> Fay ()) -> Fay ()
 addWindowEvent = ffi "window.addEventListener(%1, %2)"
 
 main :: Fay ()
-main = do
-    print "Hello Console2!"
-    addWindowEvent "load" $ \evt -> do
-        -- Initialise virtual dom
-        dom <- createElement (render (PageUserRegister "" "" ""))
-        newRootNode dom
+main = addWindowEvent "load" $ \_ -> do
+    -- Initialise virtual dom
+    let pm = UserRegister "" "" ""
+    putPageModel pm
+    initDom render pm
 
-        sock <- connect "http://localhost:8080"
+    sock <- connect "http://localhost:8080"
 
-        on sock "connect" $ \_ -> do
-            print "connected"
-            emit sock "cookie" (SessionCookie "thisismycookie")
+    on sock "connect" $ \_ -> do
+        print "connected"
+        emit sock "cookie" (SessionCookie "thisismycookie")
 
+    on sock "player" $ \(Player id s n) -> do
+        print $ append "Received player: " n
+        print $ append "Received player: " (pack (show id))
+        print $ append "Received player: " s
 
-        emit sock "join lobby" "test"
+-- Model
 
-        on sock "player" $ \(Player id s n) -> do
-            print $ append "Received player: " n
-            print $ append "Received player: " (pack (show id))
-            print $ append "Received player: " s
-
-        return ()
-
-
-data PageState =
-    PageUserRegister
-        { purUsername       :: Text
-        , purEmail          :: Text
-        , purPassword       :: Text
+data PageModel =
+    UserRegister
+        { urUsername       :: Text
+        , urEmail          :: Text
+        , urPassword       :: Text
         }
-    | PageUserLogin
-        { pulUsername       :: Text
-        , pulPassword       :: Text
+    | UserLogin
+        { ulUsername       :: Text
+        , ulPassword       :: Text
         }
+    | FormSubmitted
 
-render :: PageState -> VirtualDom
-render (PageUserRegister{..}) =
-    h "div" []
-        [ h "table" []
-            [ h "tr" []
-                [ h "td" [] [ ht "Username" ]
-                , h "td" [] 
-                    [ (h "input" [ ("type", "text"), ("value", purUsername) ] []) ]
+-- Update
+
+data Action =
+      Register
+    | Login
+
+update :: Action -> PageModel -> PageModel
+update Register pm  = FormSubmitted
+update Login pm     = FormSubmitted
+
+getPageModel :: Fay PageModel
+getPageModel = ffi "window.pageModel"
+
+putPageModel :: PageModel -> Fay ()
+putPageModel = ffi "window.pageModel = %1"
+
+dispatch :: Action -> (Event -> Fay ())
+dispatch act = \evt -> do
+    pm      <- getPageModel
+    let pm' = update act pm
+    updateDom render pm'
+    putPageModel pm'
+
+-- View
+
+render :: PageModel -> VirtualDom
+render (UserRegister{..}) =
+    hdiv []
+        [ table []
+            [ tr []
+                [ td [] [ ht "Username" ]
+                , td [] 
+                    [ input [ inputType "text", value urUsername ] ]
                 ]
-            , h "tr" []
-                [ h "td" [] [ ht "Password" ]
-                , h "td" [] 
-                    [ (h "input" [ ("type", "password"), ("value", purPassword) ] []) ]
+            , tr []
+                [ td [] [ ht "Password" ]
+                , td [] 
+                    [ input [ inputType "password" , value urPassword ] ]
+                ]
+            , tr []
+                [ td [colspan "2"]
+                    [ input [ inputType "submit", onClick (dispatch Register) ] ]
                 ]
             ]
         ]
 
-getVTree :: Fay VirtualDom
-getVTree = ffi "window.virtualTree"
-
-putVTree :: VirtualDom -> Fay ()
-putVTree = ffi "window.virtualTree = %1"
-
-newRootNode :: Dom -> Fay ()
-newRootNode = ffi "window.rootNode = document.body.appendChild(%1)"
-
-putRootNode :: Dom -> Fay ()
-putRootNode = ffi "window.rootNode = %1"
-
-getRootNode :: Fay Dom
-getRootNode = ffi "window.rootNode"
-
-updateDom :: PageState -> Fay ()
-updateDom ps = do
-    t       <- getVTree
-    let t'  = render ps
-    let p   = diff t t'
-    root    <- getRootNode
-    root'   <- patch root p
-    putRootNode root'
-    putVTree t'
+render FormSubmitted =
+    hdiv [] [ ht "Form submitted" ]
 
