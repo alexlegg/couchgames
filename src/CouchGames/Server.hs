@@ -138,6 +138,11 @@ server state = do
         liftIO $ putStrLn "join lobby"
         SocketIO.emit "player" (showToFay p)
 
+    onFay "register" $ \(SessionRegister nm em pw) -> do
+        liftIO $ putStrLn (show nm)
+        liftIO $ putStrLn (show em)
+        liftIO $ putStrLn (show pw)
+
     onFay "cookie" $ \(SessionCookie sc) -> do
         liftIO $ putStrLn (show sc)
 

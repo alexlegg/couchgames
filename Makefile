@@ -1,19 +1,13 @@
-FAY=stack exec fay --
-FAYFILES=src/Client/Test.hs \
-		 src/Client/SocketIO.hs \
-		 src/Client/VirtualDOM.hs \
-		 src/CouchGames/Player.hs \
-		 src/CouchGames/Session.hs
-FAYMAIN=src/Client/Test.hs
-FAYJS=static/Client.js
-FAYPKGS=fay-text
+all: server client
 
-all: $(FAYJS)
+.PHONY: server
+server:
 	stack install
 
-static/%.js: $(FAYFILES)
-	$(FAY) --package $(FAYPKGS) --include src/Client/,src/ -o $@ $(FAYMAIN)
+.PHONY: bridge
+bridge: server
+	couchgames-elmbridge > clientsrc/Types.elm
 
-clean:
-	rm -rf $(FAYJS)
-
+.PHONY: client
+client: bridge
+	elm-make clientsrc/Main.elm --output=static/index.html
