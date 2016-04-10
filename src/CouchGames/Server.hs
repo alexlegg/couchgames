@@ -1,11 +1,18 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies, FlexibleContexts, ExistentialQuantification #-}
-module CouchGames.Server (runApp, appTest, getConfig, connectToDatabase, flushDatabase) where
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, DataKinds, TypeFamilies, FlexibleContexts, ExistentialQuantification, DeriveDataTypeable, DeriveGeneric #-}
+module CouchGames.Server 
+    ( runApp
+    , appTest
+    , getConfig
+    , connectToDatabase
+    , flushDatabase
+    ) where
 
 import           Data.Aeson (Value(..), object, (.=), (.:))
 import qualified Data.Aeson as Aeson
 import           Data.Int
 import           Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import           Network.Wai (Application, Middleware)
 import           Network.Wai.Handler.Warp (run)
 import           Network.HTTP.Types.Status
@@ -20,11 +27,15 @@ import qualified Network.EngineIO.Wai as EIOWai
 import qualified Control.Concurrent.STM as STM
 import qualified Network.SocketIO as SocketIO
 import qualified Data.Vector as V
-import           Fay.Convert
 import           Data.Data
+import           GHC.Generics
+import           Control.Monad.State (MonadState)
+import           Control.Monad.Reader (MonadReader)
+import           Data.Text.Lazy.Encoding (encodeUtf8)
 
 import           CouchGames.Player
 import           CouchGames.Session
+import           CouchGames.Message
 
 app' :: Connection -> SpockT IO ()
 app' conn = do
@@ -132,21 +143,45 @@ data ServerState = ServerState (STM.TVar Int)
 
 server state = do
     liftIO $ putStrLn "server"
-    let p = Player 2 "sdfsdf" "name"
 
-    SocketIO.on "join lobby" $ do
-        liftIO $ putStrLn "join lobby"
-        SocketIO.emit "player" (showToFay p)
+    emit (MsgRegistered (SessionCookie "a cookie!" "sf"))
 
-    onFay "register" $ \(SessionRegister nm em pw) -> do
-        liftIO $ putStrLn (show nm)
-        liftIO $ putStrLn (show em)
-        liftIO $ putStrLn (show pw)
+---    SocketIO.on "join lobby" $ do
+---        liftIO $ putStrLn "join lobby"
+---        SocketIO.emit "player" (showToFay p)
 
-    onFay "cookie" $ \(SessionCookie sc) -> do
+---    on $ \(SessionRegister nm em pw) -> do
+---        liftIO $ putStrLn (show nm)
+---        liftIO $ putStrLn (show em)
+---        liftIO $ putStrLn (show pw)
+
+    on $ \(MsgCookie (SessionCookie sc sc2)) -> do
         liftIO $ putStrLn (show sc)
 
-onFay eventName handler = SocketIO.onJSON eventName $ \arr -> do
-    case (readFromFay (V.head arr)) of
-        Just x -> handler x
-        Nothing -> return ()
+emit :: (MonadIO m, MonadReader SocketIO.Socket m) => MessageFromServer -> m ()
+emit msg = SocketIO.emit "MessageFromServer" msg
+
+on :: (MonadState SocketIO.RoutingTable m) => (MessageFromClient -> SocketIO.EventHandler ()) -> m ()
+on f = SocketIO.on "MessageFromClient" $ \(Aeson.String s) -> do
+    case (Aeson.decode (encodeUtf8 (TL.fromStrict s))) of
+        Just x  -> f x
+        Nothing -> do
+            liftIO $ putStrLn "Got a message from client that we couldn't parse:"
+            liftIO $ putStrLn (show s)
+            let enc = Aeson.encode (MsgCookie (SessionCookie "abc" "ds"))
+            let enc2 = Aeson.encode (SessionCookie "abc" "sdfsdf")
+            liftIO $ putStrLn $ "Aeson encoding: " ++ (show enc)
+            liftIO $ putStrLn $ "Aeson encoding: " ++ (show enc2)
+            case (Aeson.decode enc) of
+                Just (MsgCookie (SessionCookie s s2)) -> liftIO $ putStrLn (show s)
+                Nothing -> return ()
+
+---strToMessage f s = case (Aeson.decode (encodeUtf8 s)) of
+---    Just x -> f x
+---    Nothing -> do
+---        liftIO $ putStrLn "Bad decode"
+
+---onFay eventName handler = SocketIO.onJSON eventName $ \arr -> do
+---    case (readFromFay (V.head arr)) of
+---        Just x -> handler x
+---        Nothing -> return ()

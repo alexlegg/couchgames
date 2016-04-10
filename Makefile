@@ -4,10 +4,10 @@ all: server client
 server:
 	stack install
 
-.PHONY: bridge
-bridge: server
-	couchgames-elmbridge > clientsrc/Types.elm
+.PHONY: types
+types: server
+	couchgames-exe -e
 
 .PHONY: client
-client: bridge
+client: types
 	elm-make clientsrc/Main.elm --output=static/index.html

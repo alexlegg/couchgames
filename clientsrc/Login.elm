@@ -1,10 +1,17 @@
-module Login where
+module Login
+    ( init
+    , update
+    , view
+    , Model
+    , Action
+    , UpdateContext
+    ) where
 
 import Html exposing (Html, form, table, tr, td, input, button, text)
 import Html.Attributes exposing (type')
 import Html.Events exposing (onClick, on, targetValue)
-import Debug
-import Effects
+import Effects exposing (Effects)
+import Util exposing (applyHandler2)
 
 type alias Model =
     { username      : String
@@ -20,18 +27,25 @@ type Action
     | SetPassword String
     | Submit
 
-update : Action -> Model -> (Model, Effects.Effects Action)
-update action model =
+type alias UpdateContext a =
+    { submitAction  : Maybe (String -> String -> a)
+    }
+
+update : UpdateContext a -> Action -> Model -> (Model, Maybe a, Effects Action)
+update ctx action model =
     case action of
         SetUsername username ->
-            ({ model | username = username}, Effects.none)
+            ({ model | username = username}, Nothing, Effects.none)
         SetPassword password ->
-            ({ model | password = password}, Effects.none)
+            ({ model | password = password}, Nothing, Effects.none)
         Submit ->
-            ({ model | username = "", password = ""}, Effects.none)
+            ( { model | username = "", password = ""}
+            , applyHandler2 ctx.submitAction model.username model.password
+            , Effects.none
+            )
 
-view : Signal.Address a -> a -> Signal.Address Action -> Model -> Html
-view up upAct address model =
+view : Signal.Address Action -> Model -> Html
+view address model =
     form []
         [ table []
             [ tr []
@@ -44,7 +58,7 @@ view up upAct address model =
                 ]
             , tr []
                 [ td [] []
-                , td [] [button [onClick up upAct] [text "Login"]]
+                , td [] [button [onClick address Submit] [text "Login"]]
                 ]
             ]
         ]

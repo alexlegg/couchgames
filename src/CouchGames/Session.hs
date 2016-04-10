@@ -1,22 +1,29 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
 module CouchGames.Session
     ( SessionCookie(..)
     , SessionRegister(..)
     , SessionLogin(..)
     ) where
 
-import Data.Data
 import Data.Text
+import Elm.Derive
 
-data SessionCookie      = SessionCookie Text deriving (Data, Typeable)
+data SessionCookie      = SessionCookie Text Text deriving (Show, Eq)
+
+deriveBoth defaultOptions ''SessionCookie
 
 data SessionRegister    = SessionRegister
     { regUsername       :: Text
     , regPassword       :: Text
     , regEmail          :: Text
-    } deriving (Data, Typeable)
+    , extra             :: Text
+    } deriving (Show, Eq)
+
+deriveBoth defaultOptions ''SessionRegister
 
 data SessionLogin       = SessionLogin
     { loginUsername     :: Text
     , loginPassword     :: Text
-    } deriving (Data, Typeable)
+    } deriving (Show, Eq)
+
+deriveBoth defaultOptions ''SessionLogin

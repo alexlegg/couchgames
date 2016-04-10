@@ -20,8 +20,11 @@ library
                      , CouchGames.Lobby
                      , CouchGames.Config
                      , CouchGames.Session
+                     , CouchGames.Message
+                     , CouchGames.ElmTypes
   build-depends:       base >= 4.7 && < 5
-                     , aeson
+                     , aeson >= 0.11
+                     , elm-bridge
                      , Spock
                      , wai
                      , warp
@@ -38,8 +41,8 @@ library
                      , socket-io
                      , stm
                      , wai-middleware-static
-                     , fay
                      , vector
+                     , mtl
   default-language:    Haskell2010
 
 executable couchgames-exe
@@ -49,14 +52,6 @@ executable couchgames-exe
   build-depends:       base
                      , couchgames
   default-language:    Haskell2010
-
-executable couchgames-elmbridge
-  hs-source-dirs:      elmbridge
-  main-is:             Main.hs
-  ghc-options:         -threaded -O2 -rtsopts -with-rtsopts=-N
-  build-depends:       base
-                     , couchgames
-                     , elm-bridge
 
 test-suite couchgames-test
   type:                exitcode-stdio-1.0
