@@ -10,7 +10,6 @@ import Elm.Derive
 
 writeElmModules :: IO ()
 writeElmModules = do
-    putStrLn (show defaultOptions)
     writeFile "clientsrc/Types.elm" $ makeElmModule "Types"
         [ DefineElm (Proxy :: Proxy MessageFromClient)
         , DefineElm (Proxy :: Proxy MessageFromServer)

@@ -19,9 +19,20 @@ app =
         , view = view
         , inputs =
             [ Signal.map SocketConnected connectedMB.signal
-            , Signal.map (SocketMsg << decodeString T.jsonDecMessageFromServer) incomingMB.signal
+            , Signal.map (SocketMsg << decodeMessage) incomingMB.signal
             ]
         }
+
+decodeMessage s =
+    let
+        dec = decodeString T.jsonDecMessageFromServer
+    in
+        case dec s of
+            Result.Ok msg ->
+                Result.Ok msg
+            Result.Err err ->
+                -- Dirty hack to fix the case when we just get a string
+                Result.formatError (\e -> e ++ " in \"" ++ s ++ "\"") (dec ("\"" ++ s ++ "\""))
 
 main = 
     app.html
@@ -94,14 +105,14 @@ update action model =
   case action of
     SocketConnected conn ->
         ( { model | socketConn = conn }
-        , emit (T.MsgCookie (T.SessionCookie "avsdfsd" "ggssgfs"))
+        , emit (T.MsgCookie (T.SessionCookie "ggssgfs"))
         )
     SocketSent ->
         ( model, Effects.none )
     SocketMsg (Result.Ok msg) ->
         handleMessage msg model
     SocketMsg (Result.Err err) ->
-        ( { model | dbgOut = err }, Effects.none )
+        ( { model | dbgOut = "Error: " ++ err }, Effects.none )
     LoginAction a ->
         let
             loginUpdateContext = { submitAction = Just LoginSubmit }
@@ -112,14 +123,22 @@ update action model =
                 upAction
                 update
     LoginSubmit username password ->
-           ( model
-           , Effects.none
-           )
+        ( { model | dbgOut = "login submit " ++ username }
+        , emit (T.MsgLogin (T.SessionLogin username password))
+        )
 
 handleMessage : T.MessageFromServer -> Model -> (Model, Effects.Effects Action)
 handleMessage msg model =
     case msg of
-        T.MsgRegistered (T.SessionCookie cookie blah) ->
+        T.MsgRegistered (T.SessionCookie cookie) ->
             ( model
+            , Effects.none
+            )
+        T.MsgBadLogin ->
+            ( { model | dbgOut = "Bad login" }
+            , Effects.none
+            )
+        T.MsgBadRegister err ->
+            ( { model | dbgOut = "Bad register: " ++ err }
             , Effects.none
             )

@@ -129,7 +129,7 @@ runApp = do
     conn        <- connectToDatabase config
     initUserBackend conn
     state       <- ServerState <$> STM.newTVarIO 0
-    sock        <- SocketIO.initialize EIOWai.waiAPI (server state)
+    sock        <- SocketIO.initialize EIOWai.waiAPI (server conn state)
     web         <- spockT id (app' conn)
     run 8080 (web (EIOWai.toWaiApplication sock))
 
@@ -141,47 +141,40 @@ connectToDatabase (Just config) = do
 
 data ServerState = ServerState (STM.TVar Int)
 
-server state = do
+server conn state = do
     liftIO $ putStrLn "server"
 
-    emit (MsgRegistered (SessionCookie "a cookie!" "sf"))
+    emit (MsgRegistered (SessionCookie "a cookie!"))
 
----    SocketIO.on "join lobby" $ do
----        liftIO $ putStrLn "join lobby"
----        SocketIO.emit "player" (showToFay p)
+    onMessage (handleMessage conn)
 
----    on $ \(SessionRegister nm em pw) -> do
----        liftIO $ putStrLn (show nm)
----        liftIO $ putStrLn (show em)
----        liftIO $ putStrLn (show pw)
+handleMessage conn (MsgRegister (SessionRegister n e p)) = do
+    u <- liftIO $ createUser conn (mkCouchUser n e p)
+    case u of
+        Left InvalidPassword        -> emit $ MsgBadRegister "Invalid password"
+        Left UsernameAlreadyTaken   -> emit $ MsgBadRegister "Username already taken"
+        Left EmailAlreadyTaken      -> emit $ MsgBadRegister "Email already taken"
+        Right uid                   -> handleMessage conn (MsgLogin (SessionLogin n p))
+        _                           -> emit $ MsgBadRegister "Unspecified error"
 
-    on $ \(MsgCookie (SessionCookie sc sc2)) -> do
-        liftIO $ putStrLn (show sc)
+handleMessage conn (MsgLogin (SessionLogin username password)) = do
+    s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
+    case s of
+        Nothing ->
+            emit MsgBadLogin
+        Just sessionId ->
+            liftIO $ putStrLn (show sessionId)
+
+handleMessage conn (MsgCookie (SessionCookie cookie)) = do
+    return ()
 
 emit :: (MonadIO m, MonadReader SocketIO.Socket m) => MessageFromServer -> m ()
 emit msg = SocketIO.emit "MessageFromServer" msg
 
-on :: (MonadState SocketIO.RoutingTable m) => (MessageFromClient -> SocketIO.EventHandler ()) -> m ()
-on f = SocketIO.on "MessageFromClient" $ \(Aeson.String s) -> do
+onMessage :: (MonadState SocketIO.RoutingTable m) => (MessageFromClient -> SocketIO.EventHandler ()) -> m ()
+onMessage f = SocketIO.on "MessageFromClient" $ \(Aeson.String s) -> do
     case (Aeson.decode (encodeUtf8 (TL.fromStrict s))) of
         Just x  -> f x
         Nothing -> do
             liftIO $ putStrLn "Got a message from client that we couldn't parse:"
             liftIO $ putStrLn (show s)
-            let enc = Aeson.encode (MsgCookie (SessionCookie "abc" "ds"))
-            let enc2 = Aeson.encode (SessionCookie "abc" "sdfsdf")
-            liftIO $ putStrLn $ "Aeson encoding: " ++ (show enc)
-            liftIO $ putStrLn $ "Aeson encoding: " ++ (show enc2)
-            case (Aeson.decode enc) of
-                Just (MsgCookie (SessionCookie s s2)) -> liftIO $ putStrLn (show s)
-                Nothing -> return ()
-
----strToMessage f s = case (Aeson.decode (encodeUtf8 s)) of
----    Just x -> f x
----    Nothing -> do
----        liftIO $ putStrLn "Bad decode"
-
----onFay eventName handler = SocketIO.onJSON eventName $ \arr -> do
----    case (readFromFay (V.head arr)) of
----        Just x -> handler x
----        Nothing -> return ()

@@ -20,7 +20,9 @@ type alias Model =
 
 init : Model
 init =
-    Model "" ""
+    { username = ""
+    , password = ""
+    }
 
 type Action
     = SetUsername String
@@ -46,20 +48,18 @@ update ctx action model =
 
 view : Signal.Address Action -> Model -> Html
 view address model =
-    form []
-        [ table []
-            [ tr []
-                [ td [] [text "Username"]
-                , td [] [input [type' "text", on "input" targetValue (Signal.message address << SetUsername)] []]
-                ]
-            , tr []
-                [ td [] [text "Password"]
-                , td [] [input [type' "password", on "input" targetValue (Signal.message address << SetPassword)] []]
-                ]
-            , tr []
-                [ td [] []
-                , td [] [button [onClick address Submit] [text "Login"]]
-                ]
+    table []
+        [ tr []
+            [ td [] [text "Username"]
+            , td [] [input [type' "text", on "input" targetValue (Signal.message address << SetUsername)] []]
+            ]
+        , tr []
+            [ td [] [text "Password"]
+            , td [] [input [type' "password", on "input" targetValue (Signal.message address << SetPassword)] []]
+            ]
+        , tr []
+            [ td [] []
+            , td [] [button [onClick address Submit] [text "Login"]]
             ]
         ]
 

@@ -8,7 +8,7 @@ module CouchGames.Session
 import Data.Text
 import Elm.Derive
 
-data SessionCookie      = SessionCookie Text Text deriving (Show, Eq)
+data SessionCookie      = SessionCookie Text deriving (Show, Eq)
 
 deriveBoth defaultOptions ''SessionCookie
 
@@ -16,7 +16,6 @@ data SessionRegister    = SessionRegister
     { regUsername       :: Text
     , regPassword       :: Text
     , regEmail          :: Text
-    , extra             :: Text
     } deriving (Show, Eq)
 
 deriveBoth defaultOptions ''SessionRegister
