@@ -9,7 +9,5 @@ cabal.sandbox.config
 *.swp
 *.keter
 config.yaml
-static/Client.js
-static/index.html
 elm-stuff/
 clientsrc/Types.elm

@@ -9,7 +9,7 @@ import Elm.Derive
 import CouchGames.Session
 
 data MessageFromServer
-    = MsgRegistered SessionCookie
+    = MsgSessionId SessionCookie
     | MsgBadLogin
     | MsgBadRegister Text
     deriving (Show, Eq)

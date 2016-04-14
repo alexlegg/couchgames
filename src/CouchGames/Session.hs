@@ -14,8 +14,8 @@ deriveBoth defaultOptions ''SessionCookie
 
 data SessionRegister    = SessionRegister
     { regUsername       :: Text
-    , regPassword       :: Text
     , regEmail          :: Text
+    , regPassword       :: Text
     } deriving (Show, Eq)
 
 deriveBoth defaultOptions ''SessionRegister

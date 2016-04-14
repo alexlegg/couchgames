@@ -144,7 +144,6 @@ data ServerState = ServerState (STM.TVar Int)
 server conn state = do
     liftIO $ putStrLn "server"
 
-    emit (MsgRegistered (SessionCookie "a cookie!"))
 
     onMessage (handleMessage conn)
 
@@ -160,10 +159,11 @@ handleMessage conn (MsgRegister (SessionRegister n e p)) = do
 handleMessage conn (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
     case s of
-        Nothing ->
+        Nothing -> do
             emit MsgBadLogin
-        Just sessionId ->
+        Just sessionId -> do
             liftIO $ putStrLn (show sessionId)
+            emit (MsgSessionId (SessionCookie (unSessionId sessionId)))
 
 handleMessage conn (MsgCookie (SessionCookie cookie)) = do
     return ()

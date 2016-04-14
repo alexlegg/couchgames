@@ -10,4 +10,4 @@ types: server
 
 .PHONY: client
 client: types
-	elm-make clientsrc/Main.elm --output=static/index.html
+	elm-make clientsrc/Main.elm --output=static/app.js

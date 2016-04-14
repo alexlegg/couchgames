@@ -1,4 +1,5 @@
 import Html exposing (Html, div, button, text)
+import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import SocketIO exposing (io, emit, on)
 import StartApp
@@ -69,15 +70,25 @@ emit msg =
 
 -- Model
 
+type PageState = LogIn | Lobby | Game
+
 type alias Model =
     { dbgOut        : String
+    , pageState     : PageState
     , loginModel    : Login.Model
+    , sessionId     : String
     , socketConn    : Bool
     }
 
 init : (Model, Effects.Effects Action)
 init = 
-    ( Model "" Login.init False
+    ( 
+        { dbgOut = ""
+        , pageState = LogIn
+        , loginModel = Login.init
+        , sessionId = ""
+        , socketConn = False
+        }
     , Effects.none
     )
 
@@ -85,11 +96,25 @@ init =
 
 view : Signal.Address Action -> Model -> Html
 view address model =
-  div []
-    [ text model.dbgOut
-    , Html.br [] []
-    , if model.socketConn then text "connected" else text "not connected"
-    , Login.view (Signal.forwardTo address LoginAction) model.loginModel ]
+    case model.pageState of
+        LogIn ->
+            div [ class "container" ]
+                [ Html.h1 [] [text "Couch Games"]
+                , text model.dbgOut
+                , Html.br [] []
+                , Login.view (Signal.forwardTo address LoginAction) model.loginModel ]
+        Lobby ->
+            div [ class "container" ]
+                [ Html.h1 [] [text "Couch Games"]
+                , text model.dbgOut
+                , Html.br [] []
+                ]
+        Game ->
+            div [ class "container" ]
+                [ Html.h1 [] [text "Couch Games"]
+                , text model.dbgOut
+                , Html.br [] []
+                ]
 
 -- Update
 
@@ -99,6 +124,7 @@ type Action
     | SocketSent
     | LoginAction Login.Action
     | LoginSubmit String String
+    | RegisterSubmit String String
 
 update : Action -> Model -> (Model, Effects.Effects Action)
 update action model =
@@ -115,7 +141,7 @@ update action model =
         ( { model | dbgOut = "Error: " ++ err }, Effects.none )
     LoginAction a ->
         let
-            loginUpdateContext = { submitAction = Just LoginSubmit }
+            loginUpdateContext = { loginAction = Just LoginSubmit, registerAction = Just RegisterSubmit }
             (loginModel, upAction, fx) = Login.update loginUpdateContext a model.loginModel
         in
             pipeMaybe
@@ -126,12 +152,16 @@ update action model =
         ( { model | dbgOut = "login submit " ++ username }
         , emit (T.MsgLogin (T.SessionLogin username password))
         )
+    RegisterSubmit username password ->
+        ( { model | dbgOut = "register submit " ++ username }
+        , emit (T.MsgRegister (T.SessionRegister username "" password))
+        )
 
 handleMessage : T.MessageFromServer -> Model -> (Model, Effects.Effects Action)
 handleMessage msg model =
     case msg of
-        T.MsgRegistered (T.SessionCookie cookie) ->
-            ( model
+        T.MsgSessionId (T.SessionCookie sessId) ->
+            ( { model | sessionId = sessId, pageState = Lobby }
             , Effects.none
             )
         T.MsgBadLogin ->
