@@ -2,6 +2,8 @@ import Html exposing (Html, div, button, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import SocketIO exposing (io, emit, on)
+import WebAPI.Cookie
+import Dict
 import StartApp
 import Result
 import Effects
@@ -21,6 +23,7 @@ app =
         , inputs =
             [ Signal.map SocketConnected connectedMB.signal
             , Signal.map (SocketMsg << decodeMessage) incomingMB.signal
+            , Signal.map Cookies cookieMB.signal
             ]
         }
 
@@ -40,6 +43,13 @@ main =
 
 port run : Signal (Task Effects.Never ())
 port run = app.tasks
+
+cookieMB =
+    Signal.mailbox Dict.empty
+
+port getCookie : Task WebAPI.Cookie.Error ()
+port getCookie =
+    WebAPI.Cookie.get `andThen` Signal.send cookieMB.address
 
 -- SocketIO handling
 
@@ -77,6 +87,7 @@ type alias Model =
     , pageState     : PageState
     , loginModel    : Login.Model
     , sessionId     : String
+    , username      : String
     , socketConn    : Bool
     }
 
@@ -87,6 +98,7 @@ init =
         , pageState = LogIn
         , loginModel = Login.init
         , sessionId = ""
+        , username = ""
         , socketConn = False
         }
     , Effects.none
@@ -108,6 +120,7 @@ view address model =
                 [ Html.h1 [] [text "Couch Games"]
                 , text model.dbgOut
                 , Html.br [] []
+                , text ("Logged in as " ++ model.username)
                 ]
         Game ->
             div [ class "container" ]
@@ -122,6 +135,7 @@ type Action
     = SocketConnected Bool
     | SocketMsg (Result String T.MessageFromServer)
     | SocketSent
+    | Cookies (Dict.Dict String String)
     | LoginAction Login.Action
     | LoginSubmit String String
     | RegisterSubmit String String
@@ -131,7 +145,7 @@ update action model =
   case action of
     SocketConnected conn ->
         ( { model | socketConn = conn }
-        , emit (T.MsgCookie (T.SessionCookie "ggssgfs"))
+        , Effects.none
         )
     SocketSent ->
         ( model, Effects.none )
@@ -139,6 +153,14 @@ update action model =
         handleMessage msg model
     SocketMsg (Result.Err err) ->
         ( { model | dbgOut = "Error: " ++ err }, Effects.none )
+    Cookies cookies ->
+        ( model
+        , case Dict.get "sessionId" cookies of
+            Just sessId ->
+                emit (T.MsgCookie (T.SessionCookie sessId))
+            Nothing ->
+                Effects.none
+        )
     LoginAction a ->
         let
             loginUpdateContext = { loginAction = Just LoginSubmit, registerAction = Just RegisterSubmit }
@@ -160,8 +182,14 @@ update action model =
 handleMessage : T.MessageFromServer -> Model -> (Model, Effects.Effects Action)
 handleMessage msg model =
     case msg of
-        T.MsgSessionId (T.SessionCookie sessId) ->
-            ( { model | sessionId = sessId, pageState = Lobby }
+        T.MsgSession (T.SessionCookie sessId) username ->
+            ( { model | sessionId = sessId, username = username, pageState = Lobby }
+            , Task.onError (WebAPI.Cookie.set "sessionId" sessId) (\_ -> Task.succeed ())
+                |> Task.map (always SocketSent)
+                |> Effects.task
+            )
+        T.MsgBadCookie ->
+            ( { model | dbgOut = "Bad cookie" }
             , Effects.none
             )
         T.MsgBadLogin ->

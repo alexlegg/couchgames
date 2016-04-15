@@ -30,7 +30,7 @@ import qualified Data.Vector as V
 import           Data.Data
 import           GHC.Generics
 import           Control.Monad.State (MonadState)
-import           Control.Monad.Reader (MonadReader)
+import           Control.Monad.Reader (MonadReader, ask)
 import           Data.Text.Lazy.Encoding (encodeUtf8)
 
 import           CouchGames.Player
@@ -143,9 +143,12 @@ data ServerState = ServerState (STM.TVar Int)
 
 server conn state = do
     liftIO $ putStrLn "server"
-
-
     onMessage (handleMessage conn)
+
+    SocketIO.appendDisconnectHandler $ do
+        socket <- ask
+        liftIO $ putStrLn (show (SocketIO.socketId socket))
+        liftIO $ putStrLn "A client disconnected"
 
 handleMessage conn (MsgRegister (SessionRegister n e p)) = do
     u <- liftIO $ createUser conn (mkCouchUser n e p)
@@ -163,10 +166,22 @@ handleMessage conn (MsgLogin (SessionLogin username password)) = do
             emit MsgBadLogin
         Just sessionId -> do
             liftIO $ putStrLn (show sessionId)
-            emit (MsgSessionId (SessionCookie (unSessionId sessionId)))
+            emit (MsgSession (SessionCookie (unSessionId sessionId)) username)
 
 handleMessage conn (MsgCookie (SessionCookie cookie)) = do
-    return ()
+    sess <- liftIO $ verifySession conn (SessionId cookie) (60 * 60 * 24 * 365)
+    case sess of
+        Nothing -> do
+            emit MsgBadCookie
+        Just uid -> do
+            u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
+            case u of
+                Nothing -> do
+                    emit MsgBadCookie
+                Just user -> do
+---                    socket <- ask
+---                    liftIO $ putStrLn (show (SocketIO.socketId socket))
+                    emit (MsgSession (SessionCookie cookie) (u_name user))
 
 emit :: (MonadIO m, MonadReader SocketIO.Socket m) => MessageFromServer -> m ()
 emit msg = SocketIO.emit "MessageFromServer" msg

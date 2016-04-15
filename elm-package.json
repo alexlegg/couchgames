@@ -4,8 +4,10 @@
     "repository": "https://github.com/user/project.git",
     "license": "BSD3",
     "source-directories": [
-        "clientsrc"
+        "clientsrc",
+        "../elm-web-api/src"
     ],
+    "native-modules": true,
     "exposed-modules": [],
     "dependencies": {
         "bartavelle/json-helpers": "1.1.0 <= v < 2.0.0",
