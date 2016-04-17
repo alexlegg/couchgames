@@ -154,11 +154,18 @@ server conn state = do
 handleMessage conn (MsgRegister (SessionRegister n e p)) = do
     u <- liftIO $ createUser conn (mkCouchUser n e p)
     case u of
-        Left InvalidPassword        -> emit $ MsgBadRegister "Invalid password"
-        Left UsernameAlreadyTaken   -> emit $ MsgBadRegister "Username already taken"
-        Left EmailAlreadyTaken      -> emit $ MsgBadRegister "Email already taken"
-        Right uid                   -> handleMessage conn (MsgLogin (SessionLogin n p))
-        _                           -> emit $ MsgBadRegister "Unspecified error"
+        Left InvalidPassword ->
+            emit $ MsgBadRegister "Invalid password"
+        Left UsernameAlreadyTaken ->
+            emit $ MsgBadRegister "Username already taken"
+        Left UsernameAndEmailAlreadyTaken ->
+            emit $ MsgBadRegister "Username already taken"
+        Left EmailAlreadyTaken ->
+            emit $ MsgBadRegister "Email already taken"
+        Right uid ->
+            handleMessage conn (MsgLogin (SessionLogin n p))
+        _ ->
+            emit $ MsgBadRegister "User registration failed"
 
 handleMessage conn (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)

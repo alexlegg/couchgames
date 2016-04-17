@@ -54,7 +54,7 @@ port getCookie =
 -- SocketIO handling
 
 socket =
-    io "http://localhost:8080" SocketIO.defaultOptions
+    io "http://localhost:4242" SocketIO.defaultOptions
 
 connectedMB =
     Signal.mailbox False
@@ -80,7 +80,7 @@ emit msg =
 
 -- Model
 
-type PageState = LogIn | Lobby | Game
+type PageState = Connecting | LogIn | Lobby | Game
 
 type alias Model =
     { dbgOut        : String
@@ -95,7 +95,7 @@ init : (Model, Effects.Effects Action)
 init = 
     ( 
         { dbgOut = ""
-        , pageState = LogIn
+        , pageState = Connecting
         , loginModel = Login.init
         , sessionId = ""
         , username = ""
@@ -109,6 +109,12 @@ init =
 view : Signal.Address Action -> Model -> Html
 view address model =
     case model.pageState of
+        Connecting ->
+            div [ class "container" ]
+                [ Html.h1 [] [text "Couch Games"]
+                , Html.br [] []
+                , text "Connecting to server"
+                ]
         LogIn ->
             div [ class "container" ]
                 [ Html.h1 [] [text "Couch Games"]
@@ -144,7 +150,7 @@ update : Action -> Model -> (Model, Effects.Effects Action)
 update action model =
   case action of
     SocketConnected conn ->
-        ( { model | socketConn = conn }
+        ( { model | pageState = LogIn, socketConn = conn }
         , Effects.none
         )
     SocketSent ->
@@ -171,11 +177,11 @@ update action model =
                 upAction
                 update
     LoginSubmit username password ->
-        ( { model | dbgOut = "login submit " ++ username }
+        ( model 
         , emit (T.MsgLogin (T.SessionLogin username password))
         )
     RegisterSubmit username password ->
-        ( { model | dbgOut = "register submit " ++ username }
+        ( model 
         , emit (T.MsgRegister (T.SessionRegister username "" password))
         )
 
@@ -189,14 +195,14 @@ handleMessage msg model =
                 |> Effects.task
             )
         T.MsgBadCookie ->
-            ( { model | dbgOut = "Bad cookie" }
+            ({ model | dbgOut = "Bad cookie" }
             , Effects.none
             )
         T.MsgBadLogin ->
-            ( { model | dbgOut = "Bad login" }
-            , Effects.none
-            )
+            update
+                (LoginAction (Login.ErrorMessage "Bad username or password"))
+                model
         T.MsgBadRegister err ->
-            ( { model | dbgOut = "Bad register: " ++ err }
-            , Effects.none
-            )
+            update
+                (LoginAction (Login.ErrorMessage err))
+                model
