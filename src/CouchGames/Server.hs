@@ -32,6 +32,7 @@ import           GHC.Generics
 import           Control.Monad.State (MonadState)
 import           Control.Monad.Reader (MonadReader, ask)
 import           Data.Text.Lazy.Encoding (encodeUtf8)
+import           System.Log.Logger
 
 import           CouchGames.Player
 import           CouchGames.Session
@@ -163,24 +164,28 @@ handleMessage conn (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
     case s of
         Nothing -> do
+            liftIO $ infoM "Server" (T.unpack username ++ " failed login.")
             emit MsgBadLogin
         Just sessionId -> do
-            liftIO $ putStrLn (show sessionId)
+            liftIO $ infoM "Server" (T.unpack username ++ " logged in. Granted session id: " ++ T.unpack (unSessionId sessionId))
             emit (MsgSession (SessionCookie (unSessionId sessionId)) username)
 
 handleMessage conn (MsgCookie (SessionCookie cookie)) = do
     sess <- liftIO $ verifySession conn (SessionId cookie) (60 * 60 * 24 * 365)
     case sess of
         Nothing -> do
+            liftIO $ infoM "Server" ("Bad cookie: " ++ T.unpack cookie)
             emit MsgBadCookie
         Just uid -> do
             u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
             case u of
                 Nothing -> do
+                    liftIO $ errorM "Server" ("Good cookie, bad user: " ++ T.unpack cookie ++ " " ++ show uid)
                     emit MsgBadCookie
                 Just user -> do
 ---                    socket <- ask
 ---                    liftIO $ putStrLn (show (SocketIO.socketId socket))
+                    liftIO $ infoM "Server" (T.unpack (u_name user) ++ " authorised with session id: " ++ T.unpack cookie)
                     emit (MsgSession (SessionCookie cookie) (u_name user))
 
 emit :: (MonadIO m, MonadReader SocketIO.Socket m) => MessageFromServer -> m ()
@@ -191,5 +196,5 @@ onMessage f = SocketIO.on "MessageFromClient" $ \(Aeson.String s) -> do
     case (Aeson.decode (encodeUtf8 (TL.fromStrict s))) of
         Just x  -> f x
         Nothing -> do
-            liftIO $ putStrLn "Got a message from client that we couldn't parse:"
-            liftIO $ putStrLn (show s)
+            liftIO $ errorM "Server" "Got a message from client that we couldn't parse:"
+            liftIO $ errorM "Server" (show s)
