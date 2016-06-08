@@ -6,15 +6,24 @@ import Data.Proxy
 import Elm.Module
 import CouchGames.Message
 import CouchGames.Session
+import CouchGames.Lobby
+import CouchGames.Player
 import Elm.Derive
+import Elm.Versions
 
 writeElmModules :: IO ()
 writeElmModules = do
-    writeFile "clientsrc/Types.elm" $ makeElmModule "Types"
+    writeFile "clientsrc/Types.elm" $ makeElmModuleWithVersion Elm0p17 "Types"
         [ DefineElm (Proxy :: Proxy MessageFromClient)
         , DefineElm (Proxy :: Proxy MessageFromServer)
 
         , DefineElm (Proxy :: Proxy SessionCookie)
         , DefineElm (Proxy :: Proxy SessionRegister)
         , DefineElm (Proxy :: Proxy SessionLogin)
+
+        , DefineElm (Proxy :: Proxy Lobby)
+        , DefineElm (Proxy :: Proxy LobbyState)
+        , DefineElm (Proxy :: Proxy GameType)
+
+        , DefineElm (Proxy :: Proxy Player)
         ]

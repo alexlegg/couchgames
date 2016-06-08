@@ -1,21 +1,15 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
 module CouchGames.Player (
-      PlayerId
-    , Player(..)
-    , DumbType(..)
+      Player(..)
     ) where
 
-import Data.Data
+import Data.Int
 import Data.Text
+import Elm.Derive
 
 data Player = Player
-    { userId        :: Int
-    , socketId      :: Text
+    { playerId      :: Int
     , displayName   :: Text
-    } deriving (Data)
+    } deriving (Show, Eq)
 
-type PlayerId = Int
-
-data DumbType = DumbType
-    { dumbInt       :: Int
-    } deriving (Data, Read, Show, Typeable)
+deriveBoth defaultOptions ''Player

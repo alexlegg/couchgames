@@ -22,9 +22,10 @@ library
                      , CouchGames.Session
                      , CouchGames.Message
                      , CouchGames.ElmTypes
+                     , CouchGames.Manager
   build-depends:       base >= 4.7 && < 5
                      , aeson >= 0.11
-                     , elm-bridge
+                     , elm-bridge >= 0.3.0.0 && < 0.4
                      , Spock
                      , wai
                      , warp
@@ -44,6 +45,10 @@ library
                      , vector
                      , mtl
                      , hslogger
+                     , bytestring
+                     , string-conversions
+                     , websockets
+                     , wai-websockets
   default-language:    Haskell2010
 
 executable couchgames-exe

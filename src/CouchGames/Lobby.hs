@@ -1,39 +1,28 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
 module CouchGames.Lobby (
       Lobby(..)
     , LobbyState(..)
-    , createLobby
-    , joinLobby
-    , leaveLobby
-    , closeLobby
+    , GameType(..)
     ) where
 
-import Data.Data
-import CouchGames.Player (PlayerId)
+import CouchGames.Player
+import Data.Text
+import Elm.Derive
+
+data GameType = Resistance | Hanabi
+    deriving (Show, Eq)
+
+deriveBoth defaultOptions ''GameType
+
+data LobbyState = LSOpen | LSClosed
+    deriving (Show, Eq)
+
+deriveBoth defaultOptions ''LobbyState
 
 data Lobby = Lobby {
-      lobbyPlayers      :: [PlayerId]
-    , lobbyGame         :: Int
+      lobbyPlayers      :: [Player]
+    , lobbyGame         :: GameType
     , lobbyState        :: LobbyState
-    } deriving (Show, Data)
+    } deriving (Show, Eq)
 
-data LobbyState = LSOpen | LSClosed deriving (Show, Data)
-
-createLobby :: PlayerId -> Lobby
-createLobby p = Lobby [p] 0 LSOpen
-
-joinLobby :: Lobby -> PlayerId -> Lobby
-joinLobby l p = l { lobbyPlayers = lobbyPlayers l ++ [p] }
-
-leaveLobby :: Lobby -> PlayerId -> Maybe Lobby
-leaveLobby l p = case (lobbyPlayers l) of
-    []      -> Nothing
-    (x:[])  -> Nothing
-    xs      -> Just $ l { lobbyPlayers = delete p xs }
-
-delete :: Eq a => a -> [a] -> [a]
-delete _ []     = []
-delete x (y:ys) = if x == y then ys else y : delete x ys
-
-closeLobby :: Lobby -> Lobby
-closeLobby l = l { lobbyState = LSClosed }
+deriveBoth defaultOptions ''Lobby

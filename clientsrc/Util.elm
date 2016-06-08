@@ -1,15 +1,17 @@
-module Util where
+module Util exposing
+    ( pipeMaybe
+    , applyHandler
+    , applyHandler2
+    )
 
-import Effects exposing (Effects)
-
-pipeMaybe : (m, Effects a) -> Maybe a' -> (a' -> m -> (m, Effects a)) -> (m, Effects a)
+pipeMaybe : (m, Cmd a) -> Maybe a' -> (a' -> m -> (m, Cmd a)) -> (m, Cmd a)
 pipeMaybe (model, fx) act f =
     case act of
         Just a ->
             let
                 (model', fx') = f a model
             in
-                (model', Effects.batch [fx', fx])
+                (model', Cmd.batch [fx', fx])
         Nothing ->
             (model, fx)
 

@@ -20,12 +20,13 @@ import           Web.Users.Types
 import           Web.Users.Postgresql ()
 import           Web.Spock.Safe
 import           Control.Monad.IO.Class
+import           Control.Monad (forever)
+import           Control.Exception (finally)
 import           Database.PostgreSQL.Simple
 import qualified CouchGames.Config as C
 import           Network.Wai.Middleware.Static
 import qualified Network.EngineIO.Wai as EIOWai
 import qualified Control.Concurrent.STM as STM
-import qualified Network.SocketIO as SocketIO
 import qualified Data.Vector as V
 import           Data.Data
 import           GHC.Generics
@@ -33,8 +34,13 @@ import           Control.Monad.State (MonadState)
 import           Control.Monad.Reader (MonadReader, ask)
 import           Data.Text.Lazy.Encoding (encodeUtf8)
 import           System.Log.Logger
+import           Data.String.Conversions
+import qualified Network.WebSockets as WS
+import           Network.Wai.Handler.WebSockets
 
+import qualified CouchGames.Manager as M
 import           CouchGames.Player
+import           CouchGames.Lobby
 import           CouchGames.Session
 import           CouchGames.Message
 
@@ -47,9 +53,6 @@ app' conn = do
 
     get "/some-json" $ do
         json $ object ["foo" .= Number 23, "bar" .= Number 42]
-
-    get "/socket.io" $ middlewarePass
-    post "/socket.io" $ middlewarePass
 
     get getUser $ \userId -> do
         u <- liftIO $ (getUserById conn userId :: IO (Maybe CouchUser))
@@ -129,10 +132,9 @@ runApp = do
     config      <- C.parseConfig "config.yaml"
     conn        <- connectToDatabase config
     initUserBackend conn
-    state       <- ServerState <$> STM.newTVarIO 0
-    sock        <- SocketIO.initialize EIOWai.waiAPI (server conn state)
-    web         <- spockT id (app' conn)
-    run 8080 (web (EIOWai.toWaiApplication sock))
+    state       <- STM.newTVarIO M.emptyManager
+    webApp      <- spockAsApp (spockT id (app' conn))
+    run 8080 $ websocketsOr WS.defaultConnectionOptions (sockApp conn state) webApp
 
 connectToDatabase (Just config) = do
     connect defaultConnectInfo
@@ -140,68 +142,80 @@ connectToDatabase (Just config) = do
         , connectUser       = C.dbUser config
         , connectPassword   = C.dbPassword config }
 
-data ServerState = ServerState (STM.TVar Int)
+sockApp :: Connection -> STM.TVar M.Manager -> WS.ServerApp
+sockApp dbConn manager pending = do
+    conn <- WS.acceptRequest pending
+    emit conn $ MsgConnected
+    forever $ do
+        msg <- WS.receiveData conn
+        case (Aeson.decode msg) of
+            Just x  -> handleMessage conn dbConn manager x
+            Nothing -> do
+                liftIO $ errorM "Server" "Got a message from client that we couldn't parse:"
+                liftIO $ errorM "Server" (show msg)
 
-server conn state = do
-    liftIO $ putStrLn "server"
-    onMessage (handleMessage conn)
-
-    SocketIO.appendDisconnectHandler $ do
-        socket <- ask
-        liftIO $ putStrLn (show (SocketIO.socketId socket))
-        liftIO $ putStrLn "A client disconnected"
-
-handleMessage conn (MsgRegister (SessionRegister n e p)) = do
-    u <- liftIO $ createUser conn (mkCouchUser n e p)
+handleMessage :: WS.Connection -> Connection -> STM.TVar M.Manager -> MessageFromClient -> IO ()
+handleMessage sock conn state (MsgRegister (SessionRegister n e p)) = do
+    u <- createUser conn (mkCouchUser n e p)
     case u of
         Left InvalidPassword ->
-            emit $ MsgBadRegister "Invalid password"
+            emit sock $ MsgBadRegister "Invalid password"
         Left UsernameAlreadyTaken ->
-            emit $ MsgBadRegister "Username already taken"
+            emit sock $ MsgBadRegister "Username already taken"
         Left UsernameAndEmailAlreadyTaken ->
-            emit $ MsgBadRegister "Username already taken"
+            emit sock $ MsgBadRegister "Username already taken"
         Left EmailAlreadyTaken ->
-            emit $ MsgBadRegister "Email already taken"
+            emit sock $ MsgBadRegister "Email already taken"
         Right uid ->
-            handleMessage conn (MsgLogin (SessionLogin n p))
+            handleMessage sock conn state (MsgLogin (SessionLogin n p))
         _ ->
-            emit $ MsgBadRegister "User registration failed"
+            emit sock $ MsgBadRegister "User registration failed"
 
-handleMessage conn (MsgLogin (SessionLogin username password)) = do
+handleMessage sock conn state (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
     case s of
         Nothing -> do
             liftIO $ infoM "Server" (T.unpack username ++ " failed login.")
-            emit MsgBadLogin
+            emit sock MsgBadLogin
         Just sessionId -> do
             liftIO $ infoM "Server" (T.unpack username ++ " logged in. Granted session id: " ++ T.unpack (unSessionId sessionId))
-            emit (MsgSession (SessionCookie (unSessionId sessionId)) username)
 
-handleMessage conn (MsgCookie (SessionCookie cookie)) = do
+            -- Handle login by passing it off as a session auth
+            handleMessage sock conn state (MsgCookie (SessionCookie (unSessionId sessionId)))
+
+handleMessage sock conn state (MsgCookie (SessionCookie cookie)) = do
     sess <- liftIO $ verifySession conn (SessionId cookie) (60 * 60 * 24 * 365)
     case sess of
         Nothing -> do
             liftIO $ infoM "Server" ("Bad cookie: " ++ T.unpack cookie)
-            emit MsgBadCookie
+            emit sock MsgBadCookie
         Just uid -> do
             u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
             case u of
                 Nothing -> do
                     liftIO $ errorM "Server" ("Good cookie, bad user: " ++ T.unpack cookie ++ " " ++ show uid)
-                    emit MsgBadCookie
+                    emit sock MsgBadCookie
                 Just user -> do
----                    socket <- ask
----                    liftIO $ putStrLn (show (SocketIO.socketId socket))
                     liftIO $ infoM "Server" (T.unpack (u_name user) ++ " authorised with session id: " ++ T.unpack cookie)
-                    emit (MsgSession (SessionCookie cookie) (u_name user))
+                    liftIO $ STM.atomically $ STM.modifyTVar state (M.newUser uid "blah")
+                    emit sock (MsgSession (SessionCookie cookie) (u_name user))
 
-emit :: (MonadIO m, MonadReader SocketIO.Socket m) => MessageFromServer -> m ()
-emit msg = SocketIO.emit "MessageFromServer" msg
+handleMessage sock conn state (MsgNewGame gameType) = do
+    m <- liftIO $ STM.readTVarIO state
+    case M.getUserFromSocket "blah" m of
+        Nothing ->
+            liftIO $ errorM "Server" "Did not recognise socket"
+        Just uid -> do
+            u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
+            case u of
+                Nothing -> 
+                    liftIO $ errorM "Server" "Bad user ID"
+                Just user -> 
+                    liftIO $ STM.atomically $ do
+                        s <- STM.readTVar state
+                        let (lobby, s')     = M.newLobby gameType s
+                        let (player, s'')   = M.newPlayer uid (u_name user) "blah" lobby s'
+                        STM.writeTVar state s''
 
-onMessage :: (MonadState SocketIO.RoutingTable m) => (MessageFromClient -> SocketIO.EventHandler ()) -> m ()
-onMessage f = SocketIO.on "MessageFromClient" $ \(Aeson.String s) -> do
-    case (Aeson.decode (encodeUtf8 (TL.fromStrict s))) of
-        Just x  -> f x
-        Nothing -> do
-            liftIO $ errorM "Server" "Got a message from client that we couldn't parse:"
-            liftIO $ errorM "Server" (show s)
+emit :: WS.Connection -> MessageFromServer -> IO ()
+emit sock msg = WS.sendTextData sock (Aeson.encode msg)

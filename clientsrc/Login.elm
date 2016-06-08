@@ -1,16 +1,15 @@
-module Login
+module Login exposing
     ( init
     , update
     , view
     , Model
-    , Action(..)
+    , Msg(..)
     , UpdateContext
-    ) where
+    )
 
 import Html exposing (Html, div, table, tr, td, input, button, text)
 import Html.Attributes exposing (type', value, colspan, class, placeholder)
-import Html.Events exposing (onClick, on, targetValue)
-import Effects exposing (Effects)
+import Html.Events exposing (onClick, onInput)
 import Util exposing (applyHandler2)
 
 type FormState = LoggingIn | Registering
@@ -32,7 +31,7 @@ init =
     , password2 = ""
     }
 
-type Action
+type Msg
     = SetUsername String
     | SetPassword String
     | SetPassword2 String
@@ -42,48 +41,48 @@ type Action
     | Register
 
 type alias UpdateContext a =
-    { loginAction : Maybe (String -> String -> a)
-    , registerAction : Maybe (String -> String -> a)
+    { loginMsg : Maybe (String -> String -> a)
+    , registerMsg : Maybe (String -> String -> a)
     }
 
-update : UpdateContext a -> Action -> Model -> (Model, Maybe a, Effects Action)
+update : UpdateContext a -> Msg -> Model -> (Model, Maybe a, Cmd Msg)
 update ctx action model =
     case action of
         SetUsername username ->
-            ({ model | username = username}, Nothing, Effects.none)
+            ({ model | username = username}, Nothing, Cmd.none)
         SetPassword password ->
-            ({ model | password = password}, Nothing, Effects.none)
+            ({ model | password = password}, Nothing, Cmd.none)
         SetPassword2 password ->
-            ({ model | password2 = password}, Nothing, Effects.none)
+            ({ model | password2 = password}, Nothing, Cmd.none)
         ErrorMessage msg ->
-            ({ model | errorMessage = Just msg}, Nothing, Effects.none)
+            ({ model | errorMessage = Just msg}, Nothing, Cmd.none)
         Submit ->
             ( { model | password = "", password2 = ""}
-            , applyHandler2 ctx.loginAction model.username model.password
-            , Effects.none
+            , applyHandler2 ctx.loginMsg model.username model.password
+            , Cmd.none
             )
         GoToRegister ->
-            ({ model | formState = Registering, errorMessage = Nothing }, Nothing, Effects.none)
+            ({ model | formState = Registering, errorMessage = Nothing }, Nothing, Cmd.none)
         Register ->
             if model.password == model.password2
             then
                 ( { model | password = "", password2 = "" }
-                , applyHandler2 ctx.registerAction model.username model.password
-                , Effects.none
+                , applyHandler2 ctx.registerMsg model.username model.password
+                , Cmd.none
                 )
             else
                 ( { model | errorMessage = Just "Passwords don't match", password = "", password2 = "" }
                 , Nothing
-                , Effects.none
+                , Cmd.none
                 )
 
-view : Signal.Address Action -> Model -> Html
-view address model =
+view : Model -> Html Msg
+view model =
     div [class "card"]
         ( viewErrorMessage model
         ++ [ input
             [ type' "text"
-            , on "input" targetValue (Signal.message address << SetUsername)
+            , onInput SetUsername
             , placeholder "Username"
             , class "login-input"
             , value model.username
@@ -91,7 +90,7 @@ view address model =
             []
         , input
             [ type' "password"
-            , on "input" targetValue (Signal.message address << SetPassword)
+            , onInput SetPassword
             , placeholder "Password"
             , class "login-input"
             , value model.password
@@ -102,17 +101,17 @@ view address model =
             then
                 [ input
                     [ type' "password"
-                    , on "input" targetValue (Signal.message address << SetPassword2)
+                    , onInput SetPassword2
                     , placeholder "Confirm Password"
                     , class "login-input"
                     , value model.password2
                     ]
                     []
-                , button [onClick address Register , class "light-purple"] [text "Register"]
+                , button [onClick Register , class "light-purple"] [text "Register"]
                 ]
             else
-                [ button [onClick address Submit, class "purple"] [text "Login"]
-                , button [onClick address GoToRegister, class "light-purple"] [text "I need an Account"]
+                [ button [onClick Submit, class "purple"] [text "Login"]
+                , button [onClick GoToRegister, class "light-purple"] [text "I need an Account"]
                 ]
         )
 
