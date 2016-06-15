@@ -22,6 +22,7 @@ import           Web.Spock.Safe
 import           Control.Monad.IO.Class
 import           Control.Monad (forever)
 import           Control.Exception (finally)
+import qualified Control.Monad.State as MS
 import           Database.PostgreSQL.Simple
 import qualified CouchGames.Config as C
 import           Network.Wai.Middleware.Static
@@ -197,12 +198,12 @@ handleMessage sock conn state (MsgCookie (SessionCookie cookie)) = do
                     emit sock MsgBadCookie
                 Just user -> do
                     liftIO $ infoM "Server" (T.unpack (u_name user) ++ " authorised with session id: " ++ T.unpack cookie)
-                    liftIO $ STM.atomically $ STM.modifyTVar state (M.newUser uid "blah")
+                    withManager state (M.newUser uid "blah")
                     emit sock (MsgSession (SessionCookie cookie) (u_name user))
 
 handleMessage sock conn state (MsgNewGame gameType) = do
-    m <- liftIO $ STM.readTVarIO state
-    case M.getUserFromSocket "blah" m of
+    sockUser <- withManager state (M.getUserFromSocket "blah")
+    case sockUser of
         Nothing ->
             liftIO $ errorM "Server" "Did not recognise socket"
         Just uid -> do
@@ -211,11 +212,18 @@ handleMessage sock conn state (MsgNewGame gameType) = do
                 Nothing -> 
                     liftIO $ errorM "Server" "Bad user ID"
                 Just user -> 
-                    liftIO $ STM.atomically $ do
-                        s <- STM.readTVar state
-                        let (lobby, s')     = M.newLobby gameType s
-                        let (player, s'')   = M.newPlayer uid (u_name user) "blah" lobby s'
-                        STM.writeTVar state s''
+                    withManager state $ do
+                        lobby <- M.newLobby gameType 
+                        _ <- M.newPlayer uid (u_name user) "blah" lobby
+                        return ()
 
 emit :: WS.Connection -> MessageFromServer -> IO ()
 emit sock msg = WS.sendTextData sock (Aeson.encode msg)
+
+withManager :: STM.TVar M.Manager -> (M.ManagerS a) -> IO a
+withManager manager f = 
+    STM.atomically $ do
+        m <- STM.readTVar manager
+        let (a, m') = MS.runState f m
+        STM.writeTVar manager m'
+        return a

@@ -1,5 +1,6 @@
 module CouchGames.Manager
     ( Manager
+    , ManagerS
     , emptyManager
     , newUser
     , getUserFromSocket
@@ -11,6 +12,7 @@ import qualified Data.Map as Map
 import qualified Data.IntMap as IMap
 import qualified Data.Text as T
 import           Data.Int
+import           Control.Monad.State
 import           CouchGames.Player
 import           CouchGames.Lobby
 
@@ -26,6 +28,8 @@ data Manager = Manager
     , lobbies       :: IMap.IntMap Lobby
     }
 
+type ManagerS = State Manager
+
 emptyManager :: Manager
 emptyManager = Manager
     { users = Map.empty
@@ -36,29 +40,37 @@ emptyManager = Manager
     , lobbies = IMap.empty
     }
 
-newUser :: Int64 -> T.Text -> Manager -> Manager
-newUser userId socketId m = m { users = Map.insert socketId userId (users m) }
+newUser :: Int64 -> T.Text -> ManagerS ()
+newUser userId socketId = do
+    m <- get
+    put m { users = Map.insert socketId userId (users m) }
 
-getUserFromSocket :: T.Text -> Manager -> Maybe Int64
-getUserFromSocket socketId m = Map.lookup socketId (users m)
+getUserFromSocket :: T.Text -> ManagerS (Maybe Int64)
+getUserFromSocket socketId = do
+    m <- get
+    return $ Map.lookup socketId (users m)
 
-newLobby :: GameType -> Manager -> (Int, Manager)
-newLobby gameType m =
-    (nextLobbyId m, m { lobbies = IMap.insert (nextLobbyId m) lobby (lobbies m), nextLobbyId = nextLobbyId m + 1 })
+newLobby :: GameType -> ManagerS Int
+newLobby gameType = do
+    m <- get
+    put m { lobbies = IMap.insert (nextLobbyId m) lobby (lobbies m), nextLobbyId = nextLobbyId m + 1 }
+    return $ nextLobbyId m 
     where
         lobby = Lobby { lobbyPlayers = []
                       , lobbyGame = gameType
                       , lobbyState = LSOpen
                       }
 
-newPlayer :: Int64 -> T.Text -> T.Text -> Int -> Manager -> (Int, Manager)
-newPlayer userId userName socketId lobbyId m =
-    (nextPlayerId m, m { players = players', sockets = sockets', nextPlayerId = nextPlayerId m + 1 })
+newPlayer :: Int64 -> T.Text -> T.Text -> Int -> ManagerS Int
+newPlayer userId userName socketId lobbyId = do
+    m <- get
+    put m { players = players' m, sockets = sockets' m, nextPlayerId = nextPlayerId m + 1 }
+    return $ nextPlayerId m
     where
-        players'    = IMap.insert (fromIntegral userId) p (players m)
-        p           = Player { playerId     = nextPlayerId m
+        players' m  = IMap.insert (fromIntegral userId) (p m) (players m)
+        p m         = Player { playerId     = nextPlayerId m
                              , displayName  = userName
                              }
-        sockets'    = IMap.insert (nextPlayerId m) [socketId] (sockets m)
+        sockets' m  = IMap.insert (nextPlayerId m) [socketId] (sockets m)
 
                                 
