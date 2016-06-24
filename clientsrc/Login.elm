@@ -10,7 +10,7 @@ module Login exposing
 import Html exposing (Html, div, table, tr, td, input, button, text)
 import Html.Attributes exposing (type', value, colspan, class, placeholder)
 import Html.Events exposing (onClick, onInput)
-import Util exposing (applyHandler2)
+import Util exposing (applyHandler2, applyHandler3)
 
 type FormState = LoggingIn | Registering
 
@@ -20,6 +20,7 @@ type alias Model =
     , username      : String
     , password      : String
     , password2     : String
+    , email         : String
     }
 
 init : Model
@@ -29,12 +30,14 @@ init =
     , username = ""
     , password = ""
     , password2 = ""
+    , email = ""
     }
 
 type Msg
     = SetUsername String
     | SetPassword String
     | SetPassword2 String
+    | SetEmail String
     | ErrorMessage String
     | Submit
     | GoToRegister
@@ -42,7 +45,7 @@ type Msg
 
 type alias UpdateContext a =
     { loginMsg : Maybe (String -> String -> a)
-    , registerMsg : Maybe (String -> String -> a)
+    , registerMsg : Maybe (String -> String -> String -> a)
     }
 
 update : UpdateContext a -> Msg -> Model -> (Model, Maybe a, Cmd Msg)
@@ -54,6 +57,8 @@ update ctx action model =
             ({ model | password = password}, Nothing, Cmd.none)
         SetPassword2 password ->
             ({ model | password2 = password}, Nothing, Cmd.none)
+        SetEmail email ->
+            ({ model | email = email}, Nothing, Cmd.none)
         ErrorMessage msg ->
             ({ model | errorMessage = Just msg}, Nothing, Cmd.none)
         Submit ->
@@ -67,7 +72,7 @@ update ctx action model =
             if model.password == model.password2
             then
                 ( { model | password = "", password2 = "" }
-                , applyHandler2 ctx.registerMsg model.username model.password
+                , applyHandler3 ctx.registerMsg model.username model.password model.email
                 , Cmd.none
                 )
             else
@@ -105,6 +110,14 @@ view model =
                     , placeholder "Confirm Password"
                     , class "login-input"
                     , value model.password2
+                    ]
+                    []
+                , input
+                    [ type' "text"
+                    , onInput SetEmail
+                    , placeholder "Email"
+                    , class "login-input"
+                    , value model.email
                     ]
                     []
                 , button [onClick Register , class "light-purple"] [text "Register"]

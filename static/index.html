@@ -13,6 +13,17 @@
 
     <script type="text/javascript">
         var app = Elm.Main.fullscreen();
+
+        // Timeout as workaround for https://github.com/elm-lang/core/issues/595
+        setTimeout(function(){ app.ports.subCookie.send(document.cookie); }, 0);
+
+        app.ports.setCookie.subscribe(function (sessId) {
+            var d = new Date();
+            d.setTime(d.getTime() + (365*24*60*60*1000));
+            var expires = "expires="+ d.toUTCString();
+            document.cookie = "sessionId=" + sessId + "; " + expires;
+        });
+
     </script>
 
 </html>

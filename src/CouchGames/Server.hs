@@ -56,10 +56,14 @@ app' conn = do
         json $ object ["foo" .= Number 23, "bar" .= Number 42]
 
     get getUser $ \userId -> do
-        u <- liftIO $ (getUserById conn userId :: IO (Maybe CouchUser))
+        u <- liftIO $ getUserById conn userId
         case u of
             (Just user) -> json $ object ["userId" .= userId, "name" .= u_name user]
             Nothing     -> sendError 1 "User not found"
+
+    get getUsers $ do
+        us <- liftIO $ listUsers conn Nothing (SortDesc UserFieldName)
+        json $ map (\(uid, user) -> object ["userId" .= uid, "name" .= u_name user]) us
 
     post newUser $ do
         userName        <- param "name"
@@ -93,19 +97,19 @@ sendError errorCode msg = do
 
 {- User API -}
 
-type CouchUser = User ()
-
-mkCouchUser :: T.Text -> T.Text -> T.Text -> CouchUser
+mkCouchUser :: T.Text -> T.Text -> T.Text -> User
 mkCouchUser name email password = User
     { u_name        = name
     , u_email       = email
     , u_password    = makePassword (PasswordPlain password)
     , u_active      = True
-    , u_more        = ()
     }
 
 getUser :: Path '[Int64]
 getUser = "users" <//> var
+
+getUsers :: Path '[]
+getUsers = "users"
 
 newUser :: Path '[]
 newUser = "users" <//> "register" 
@@ -145,6 +149,8 @@ connectToDatabase (Just config) = do
 
 sockApp :: Connection -> STM.TVar M.Manager -> WS.ServerApp
 sockApp dbConn manager pending = do
+    -- liftIO $ putStrLn (show (WS.pendingRequest pending)) -- TODO: could
+    -- use this for faster auth via cookies
     conn <- WS.acceptRequest pending
     emit conn $ MsgConnected
     forever $ do
@@ -191,7 +197,7 @@ handleMessage sock conn state (MsgCookie (SessionCookie cookie)) = do
             liftIO $ infoM "Server" ("Bad cookie: " ++ T.unpack cookie)
             emit sock MsgBadCookie
         Just uid -> do
-            u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
+            u <- liftIO $ getUserById conn uid
             case u of
                 Nothing -> do
                     liftIO $ errorM "Server" ("Good cookie, bad user: " ++ T.unpack cookie ++ " " ++ show uid)
@@ -207,7 +213,7 @@ handleMessage sock conn state (MsgNewGame gameType) = do
         Nothing ->
             liftIO $ errorM "Server" "Did not recognise socket"
         Just uid -> do
-            u <- liftIO $ (getUserById conn uid :: IO (Maybe CouchUser))
+            u <- liftIO $ getUserById conn uid
             case u of
                 Nothing -> 
                     liftIO $ errorM "Server" "Bad user ID"

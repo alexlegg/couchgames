@@ -1,3 +1,5 @@
+port module Main exposing (..)
+
 import Html exposing (Html, div, button, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
@@ -6,8 +8,9 @@ import WebSocket
 import Dict
 import Result
 import Login
+import String
 import Task exposing (Task, andThen)
-import Util exposing (pipeMaybe)
+import Util exposing (pipeMaybe, last)
 import Json.Encode exposing (encode)
 import Json.Decode exposing (decodeString)
 import Types as T
@@ -21,7 +24,10 @@ main =
         { init = init
         , update = update
         , view = view
-        , subscriptions = \_ -> WebSocket.listen wsUrl SocketMsg
+        , subscriptions = \_ -> Sub.batch
+            [ WebSocket.listen wsUrl SocketMsg
+            , subCookie Cookies
+            ]
         }
 
 decodeMessage s =
@@ -34,6 +40,9 @@ decodeMessage s =
             Result.Err err ->
                 -- Dirty hack to fix the case when we just get a string
                 Result.formatError (\e -> e ++ " in \"" ++ s ++ "\"") (dec ("\"" ++ s ++ "\""))
+
+port setCookie : String -> Cmd msg
+port subCookie : (String -> msg) -> Sub msg
 
 -- Socket handling
 
@@ -76,7 +85,7 @@ view model =
             div [ class "container" ]
                 [ Html.h1 [] [text "Couch Games"]
                 , Html.br [] []
-                , text "Connecting to server"
+                , text ( "Connecting to server " ++ model.sessionId ++ "||")
                 ]
         LogIn ->
             div [ class "container" ]
@@ -110,10 +119,10 @@ view model =
 
 type Msg
     = SocketMsg String
-    | Cookies (Dict.Dict String String)
+    | Cookies String
     | LoginMsg Login.Msg
     | LoginSubmit String String
-    | RegisterSubmit String String
+    | RegisterSubmit String String String
     | NewGame
     | NoOp
 
@@ -127,13 +136,20 @@ update action model =
             (Result.Err err) ->
                 ( { model | dbgOut = "Error: " ++ err }, Cmd.none )
     Cookies cookies ->
-        ( model
-        , case Dict.get "sessionId" cookies of
-            Just sessId ->
-                emit (T.MsgCookie (T.SessionCookie sessId))
-            Nothing ->
-                Cmd.none
-        )
+        let 
+            c = List.filter (String.startsWith "sessionId") (String.split ";" cookies)
+        in
+        case c of
+            [cookie] ->
+                case (last (String.split "=" cookie)) of
+                    Just sessId -> 
+                        ( { model | sessionId = sessId }
+                        , emit (T.MsgCookie (T.SessionCookie sessId))
+                        )
+                    Nothing ->
+                        ( { model | dbgOut = "Cookie: " ++ cookies } , Cmd.none )
+            _ ->
+                ( { model | dbgOut = "Cookie: " ++ cookies } , Cmd.none )
     LoginMsg a ->
         let
             loginUpdateContext = { loginMsg = Just LoginSubmit, registerMsg = Just RegisterSubmit }
@@ -147,9 +163,9 @@ update action model =
         ( model 
         , emit (T.MsgLogin (T.SessionLogin username password))
         )
-    RegisterSubmit username password ->
+    RegisterSubmit username password email ->
         ( model 
-        , emit (T.MsgRegister (T.SessionRegister username "" password))
+        , emit (T.MsgRegister (T.SessionRegister username email password))
         )
     NewGame ->
         ( { model | pageState = GameLobby }
@@ -167,7 +183,7 @@ handleMessage msg model =
             )
         T.MsgSession (T.SessionCookie sessId) username ->
             ( { model | sessionId = sessId, username = username, pageState = Lobby }
-            , Cmd.none --TODO Set cookie here
+            , setCookie sessId
             )
         T.MsgBadCookie ->
             ({ model | dbgOut = "Bad cookie" }

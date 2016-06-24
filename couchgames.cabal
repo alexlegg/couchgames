@@ -29,9 +29,9 @@ library
                      , Spock
                      , wai
                      , warp
-                     , users
+                     , users >= 0.5.0.0
                      , postgresql-simple
-                     , users-postgresql-simple
+                     , users-postgresql-simple >= 0.5.0.2
                      , containers
                      , yaml
                      , transformers
