@@ -85,7 +85,7 @@ view model =
             div [ class "container" ]
                 [ Html.h1 [] [text "Couch Games"]
                 , Html.br [] []
-                , text ( "Connecting to server " ++ model.sessionId ++ "||")
+                , text ( "Connecting to server")
                 ]
         LogIn ->
             div [ class "container" ]
@@ -169,7 +169,7 @@ update action model =
         )
     NewGame ->
         ( { model | pageState = GameLobby }
-        , emit (T.MsgNewGame T.Resistance)
+        , emit (T.MsgNewGame model.sessionId T.Resistance)
         )
     NoOp ->
         ( model, Cmd.none )

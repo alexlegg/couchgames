@@ -20,7 +20,8 @@ data LobbyState = LSOpen | LSClosed
 deriveBoth defaultOptions ''LobbyState
 
 data Lobby = Lobby {
-      lobbyPlayers      :: [Player]
+      lobbyId           :: Int
+    , lobbyPlayers      :: [Player]
     , lobbyGame         :: GameType
     , lobbyState        :: LobbyState
     } deriving (Show, Eq)

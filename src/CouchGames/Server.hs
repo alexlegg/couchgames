@@ -137,9 +137,9 @@ runApp = do
     config      <- C.parseConfig "config.yaml"
     conn        <- connectToDatabase config
     initUserBackend conn
-    state       <- STM.newTVarIO M.emptyManager
+    mgr         <- STM.newTVarIO M.emptyManager
     webApp      <- spockAsApp (spockT id (app' conn))
-    run 8080 $ websocketsOr WS.defaultConnectionOptions (sockApp conn state) webApp
+    run 8080 $ websocketsOr WS.defaultConnectionOptions (sockApp conn mgr) webApp
 
 connectToDatabase (Just config) = do
     connect defaultConnectInfo
@@ -162,7 +162,7 @@ sockApp dbConn manager pending = do
                 liftIO $ errorM "Server" (show msg)
 
 handleMessage :: WS.Connection -> Connection -> STM.TVar M.Manager -> MessageFromClient -> IO ()
-handleMessage sock conn state (MsgRegister (SessionRegister n e p)) = do
+handleMessage sock conn mgr (MsgRegister (SessionRegister n e p)) = do
     u <- createUser conn (mkCouchUser n e p)
     case u of
         Left InvalidPassword ->
@@ -174,11 +174,11 @@ handleMessage sock conn state (MsgRegister (SessionRegister n e p)) = do
         Left EmailAlreadyTaken ->
             emit sock $ MsgBadRegister "Email already taken"
         Right uid ->
-            handleMessage sock conn state (MsgLogin (SessionLogin n p))
+            handleMessage sock conn mgr (MsgLogin (SessionLogin n p))
         _ ->
             emit sock $ MsgBadRegister "User registration failed"
 
-handleMessage sock conn state (MsgLogin (SessionLogin username password)) = do
+handleMessage sock conn mgr (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
     case s of
         Nothing -> do
@@ -188,9 +188,9 @@ handleMessage sock conn state (MsgLogin (SessionLogin username password)) = do
             liftIO $ infoM "Server" (T.unpack username ++ " logged in. Granted session id: " ++ T.unpack (unSessionId sessionId))
 
             -- Handle login by passing it off as a session auth
-            handleMessage sock conn state (MsgCookie (SessionCookie (unSessionId sessionId)))
+            handleMessage sock conn mgr (MsgCookie (SessionCookie (unSessionId sessionId)))
 
-handleMessage sock conn state (MsgCookie (SessionCookie cookie)) = do
+handleMessage sock conn mgr (MsgCookie (SessionCookie cookie)) = do
     sess <- liftIO $ verifySession conn (SessionId cookie) (60 * 60 * 24 * 365)
     case sess of
         Nothing -> do
@@ -204,24 +204,31 @@ handleMessage sock conn state (MsgCookie (SessionCookie cookie)) = do
                     emit sock MsgBadCookie
                 Just user -> do
                     liftIO $ infoM "Server" (T.unpack (u_name user) ++ " authorised with session id: " ++ T.unpack cookie)
-                    withManager state (M.newUser uid "blah")
+                    withManager mgr (M.newUser uid user cookie)
                     emit sock (MsgSession (SessionCookie cookie) (u_name user))
 
-handleMessage sock conn state (MsgNewGame gameType) = do
-    sockUser <- withManager state (M.getUserFromSocket "blah")
+handleMessage sock conn mgr (MsgNewGame sessId gameType) = do
+    sockUser <- withManager mgr (M.getUserFromSession sessId)
     case sockUser of
         Nothing ->
             liftIO $ errorM "Server" "Did not recognise socket"
-        Just uid -> do
-            u <- liftIO $ getUserById conn uid
-            case u of
-                Nothing -> 
-                    liftIO $ errorM "Server" "Bad user ID"
-                Just user -> 
-                    withManager state $ do
-                        lobby <- M.newLobby gameType 
-                        _ <- M.newPlayer uid (u_name user) "blah" lobby
-                        return ()
+        Just (uid, user) -> do
+            withManager mgr $ do
+                lobby <- M.newLobby gameType 
+                _ <- M.newPlayer uid (u_name user) sock lobby
+                return ()
+
+            broadcastLobbies mgr
+
+broadcastLobbies :: STM.TVar M.Manager -> IO ()
+broadcastLobbies mgr = do
+    lobbies <- withManager mgr M.getLobbies
+    broadcast mgr (MsgLobbyList lobbies)
+
+broadcast :: STM.TVar M.Manager -> MessageFromServer -> IO ()
+broadcast mgr msg = do
+    socks <- withManager mgr M.getSockets
+    mapM_ (\s -> emit s msg) socks
 
 emit :: WS.Connection -> MessageFromServer -> IO ()
 emit sock msg = WS.sendTextData sock (Aeson.encode msg)

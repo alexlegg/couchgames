@@ -24,7 +24,7 @@ data MessageFromClient
     = MsgRegister SessionRegister
     | MsgLogin SessionLogin
     | MsgCookie SessionCookie
-    | MsgNewGame GameType
+    | MsgNewGame Text GameType
     deriving (Show, Eq)
 
 deriveBoth defaultOptions ''MessageFromClient
