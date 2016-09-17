@@ -8,11 +8,13 @@ module CouchGames.Manager
     , getLobbies
     , newPlayer
     , getSockets
+    , removeSocket
     ) where
 
 import qualified Data.Map as Map
 import qualified Data.IntMap as IMap
 import qualified Data.Text as T
+import qualified Data.List as L
 import           Data.Int
 import           Control.Monad.State
 import           CouchGames.Player
@@ -71,8 +73,8 @@ getLobbies = do
     m <- get
     return $ IMap.elems (lobbies m)
 
-newPlayer :: Int64 -> T.Text -> Connection -> Int -> ManagerS Int
-newPlayer userId userName socket lobbyId = do
+newPlayer :: Int64 -> T.Text -> Connection -> ManagerS Int
+newPlayer userId userName socket = do
     m <- get
     put m { players = players' m, sockets = sockets' m, nextPlayerId = nextPlayerId m + 1 }
     return $ nextPlayerId m
@@ -83,6 +85,13 @@ newPlayer userId userName socket lobbyId = do
                              }
         sockets' m  = IMap.insert (nextPlayerId m) [socket] (sockets m)
 
+-- For now just removes all sockets from a player
+removeSocket :: Int -> ManagerS ()
+removeSocket playerId = do
+    m <- get
+    case (IMap.lookup playerId (sockets m)) of
+        Just pid -> put m { sockets = IMap.adjust (const []) playerId (sockets m) }
+        Nothing -> return ()
                                 
 getSockets :: ManagerS [Connection]
 getSockets = do

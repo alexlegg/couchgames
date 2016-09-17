@@ -61,6 +61,7 @@ type alias Model =
     , sessionId     : String
     , username      : String
     , socketConn    : Bool
+    , lobbyList     : List T.Lobby
     }
 
 init : (Model, Cmd.Cmd Msg)
@@ -72,6 +73,7 @@ init =
         , sessionId = ""
         , username = ""
         , socketConn = False
+        , lobbyList = []
         }
     , Cmd.none
     )
@@ -99,6 +101,8 @@ view model =
                 , text model.dbgOut
                 , Html.br [] []
                 , text ("Logged in as " ++ model.username)
+                , Html.br [] []
+                , viewLobbyList model.lobbyList
                 , button [onClick NewGame, class "purple"] [text "New Game"]
                 ]
         GameLobby -> 
@@ -114,6 +118,29 @@ view model =
                 , text model.dbgOut
                 , Html.br [] []
                 ]
+
+viewLobbyList : List T.Lobby -> Html Msg
+viewLobbyList lobbies =
+    let
+        viewLobby l =
+            button [class "light-purple"] 
+                [text (
+                    (showGameType l.lobbyGame) ++ ": "
+                    ++ String.join ", " (List.map .displayName l.lobbyPlayers)
+                    )
+                ]
+    in
+    case lobbies of
+        [] ->
+            text "There are no game lobbies"
+        ls ->
+            div [class "card"] (List.map viewLobby ls)
+
+showGameType : T.GameType -> String
+showGameType gt =
+    case gt of
+        T.Resistance -> "Resistance"
+        T.Hanabi -> "Hanabi"
 
 -- Update
 
@@ -197,5 +224,5 @@ handleMessage msg model =
             update
                 (LoginMsg (Login.ErrorMessage err))
                 model
-        T.MsgLobbyList _ ->
-            ( model, Cmd.none )
+        T.MsgLobbyList lobbies ->
+            ( { model | lobbyList = lobbies }, Cmd.none )

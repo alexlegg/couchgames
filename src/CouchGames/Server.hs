@@ -21,7 +21,8 @@ import           Web.Users.Postgresql ()
 import           Web.Spock.Safe
 import           Control.Monad.IO.Class
 import           Control.Monad (forever)
-import           Control.Exception (finally)
+import           Control.Exception (IOException, Exception, SomeException, catch, toException, finally)
+import qualified Control.Exception as E
 import qualified Control.Monad.State as MS
 import           Database.PostgreSQL.Simple
 import qualified CouchGames.Config as C
@@ -156,78 +157,117 @@ sockApp dbConn manager pending = do
     forever $ do
         msg <- WS.receiveData conn
         case (Aeson.decode msg) of
-            Just x  -> handleMessage conn dbConn manager x
+            Just x  -> do
+                u <- handleLogin conn dbConn manager x
+                case u of
+                    Just (uid, user, cookie) -> do
+                        playerId <- withManager manager $ M.newPlayer uid (u_name user) conn
+                        emit conn (MsgSession (SessionCookie cookie) (u_name user))
+                        handlePlayer conn dbConn manager playerId
+                    Nothing ->
+                        return ()
             Nothing -> do
                 liftIO $ errorM "Server" "Got a message from client that we couldn't parse:"
                 liftIO $ errorM "Server" (show msg)
 
-handleMessage :: WS.Connection -> Connection -> STM.TVar M.Manager -> MessageFromClient -> IO ()
-handleMessage sock conn mgr (MsgRegister (SessionRegister n e p)) = do
+handleLogin :: WS.Connection -> Connection -> STM.TVar M.Manager -> MessageFromClient -> IO (Maybe (Int64, User, T.Text))
+handleLogin sock conn mgr (MsgRegister (SessionRegister n e p)) = do
     u <- createUser conn (mkCouchUser n e p)
     case u of
-        Left InvalidPassword ->
+        Left InvalidPassword -> do
             emit sock $ MsgBadRegister "Invalid password"
-        Left UsernameAlreadyTaken ->
+            return Nothing
+        Left UsernameAlreadyTaken -> do
             emit sock $ MsgBadRegister "Username already taken"
-        Left UsernameAndEmailAlreadyTaken ->
+            return Nothing
+        Left UsernameAndEmailAlreadyTaken -> do
             emit sock $ MsgBadRegister "Username already taken"
-        Left EmailAlreadyTaken ->
+            return Nothing
+        Left EmailAlreadyTaken -> do
             emit sock $ MsgBadRegister "Email already taken"
+            return Nothing
         Right uid ->
-            handleMessage sock conn mgr (MsgLogin (SessionLogin n p))
-        _ ->
+            handleLogin sock conn mgr (MsgLogin (SessionLogin n p))
+        _ -> do
             emit sock $ MsgBadRegister "User registration failed"
+            return Nothing
 
-handleMessage sock conn mgr (MsgLogin (SessionLogin username password)) = do
+handleLogin sock conn mgr (MsgLogin (SessionLogin username password)) = do
     s <- liftIO $ authUser conn username (PasswordPlain password) (60 * 60 * 24 * 365)
     case s of
         Nothing -> do
             liftIO $ infoM "Server" (T.unpack username ++ " failed login.")
             emit sock MsgBadLogin
+            return Nothing
         Just sessionId -> do
             liftIO $ infoM "Server" (T.unpack username ++ " logged in. Granted session id: " ++ T.unpack (unSessionId sessionId))
 
             -- Handle login by passing it off as a session auth
-            handleMessage sock conn mgr (MsgCookie (SessionCookie (unSessionId sessionId)))
+            handleLogin sock conn mgr (MsgCookie (SessionCookie (unSessionId sessionId)))
 
-handleMessage sock conn mgr (MsgCookie (SessionCookie cookie)) = do
+handleLogin sock conn mgr (MsgCookie (SessionCookie cookie)) = do
     sess <- liftIO $ verifySession conn (SessionId cookie) (60 * 60 * 24 * 365)
     case sess of
         Nothing -> do
             liftIO $ infoM "Server" ("Bad cookie: " ++ T.unpack cookie)
             emit sock MsgBadCookie
+            return Nothing
         Just uid -> do
             u <- liftIO $ getUserById conn uid
             case u of
                 Nothing -> do
                     liftIO $ errorM "Server" ("Good cookie, bad user: " ++ T.unpack cookie ++ " " ++ show uid)
                     emit sock MsgBadCookie
+                    return Nothing
                 Just user -> do
                     liftIO $ infoM "Server" (T.unpack (u_name user) ++ " authorised with session id: " ++ T.unpack cookie)
-                    withManager mgr (M.newUser uid user cookie)
-                    emit sock (MsgSession (SessionCookie cookie) (u_name user))
+                    _ <- withManager mgr $ M.newUser uid user cookie
+                    return $ Just (uid, user, cookie)
 
-handleMessage sock conn mgr (MsgNewGame sessId gameType) = do
-    sockUser <- withManager mgr (M.getUserFromSession sessId)
-    case sockUser of
-        Nothing ->
-            liftIO $ errorM "Server" "Did not recognise socket"
-        Just (uid, user) -> do
-            withManager mgr $ do
-                lobby <- M.newLobby gameType 
-                _ <- M.newPlayer uid (u_name user) sock lobby
-                return ()
+handleLogin _ _ _ _ = do
+    errorM "Server" "Bad message before login"
+    return Nothing
 
-            broadcastLobbies mgr
+handlePlayer :: WS.Connection -> Connection -> STM.TVar M.Manager -> Int -> IO ()
+handlePlayer sock conn mgr playerId = do
+    putStrLn $ "connect " ++ show playerId
+    broadcastLobbies mgr
+    flip finally (disconnect mgr playerId) $
+        forever $ do
+            msg <- WS.receiveData sock
+            case (Aeson.decode msg) of
+                Just x  -> do
+                    handleMessage sock conn mgr playerId x
+                Nothing -> do
+                    liftIO $ errorM "Server" "Got a message from client that we couldn't parse:"
+                    liftIO $ errorM "Server" (show msg)
+
+disconnect :: STM.TVar M.Manager -> Int -> IO ()
+disconnect mgr playerId = do
+    withManager mgr $ M.removeSocket playerId
+    putStrLn $ "disconnect " ++ (show playerId)
+
+handleMessage :: WS.Connection -> Connection -> STM.TVar M.Manager -> Int -> MessageFromClient -> IO ()
+handleMessage sock conn mgr playerId (MsgNewGame sessId gameType) = do
+    putStrLn "MsgNewGame"
+    _ <- withManager mgr $ M.newLobby gameType 
+
+    putStrLn "broadcast"
+    broadcastLobbies mgr
+
+handleMessage _ _ _ _ _ = do
+    errorM "Server" "Bad message after login"
 
 broadcastLobbies :: STM.TVar M.Manager -> IO ()
 broadcastLobbies mgr = do
     lobbies <- withManager mgr M.getLobbies
+    liftIO $ putStrLn (show lobbies)
     broadcast mgr (MsgLobbyList lobbies)
 
 broadcast :: STM.TVar M.Manager -> MessageFromServer -> IO ()
 broadcast mgr msg = do
     socks <- withManager mgr M.getSockets
+    liftIO $ putStrLn (show (length socks))
     mapM_ (\s -> emit s msg) socks
 
 emit :: WS.Connection -> MessageFromServer -> IO ()
