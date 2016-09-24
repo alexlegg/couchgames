@@ -3,6 +3,7 @@ module CouchGames.Lobby (
       Lobby(..)
     , LobbyState(..)
     , GameType(..)
+    , addPlayer
     ) where
 
 import CouchGames.Player
@@ -27,3 +28,6 @@ data Lobby = Lobby {
     } deriving (Show, Eq)
 
 deriveBoth defaultOptions ''Lobby
+
+addPlayer :: Player -> Lobby -> Lobby
+addPlayer player lobby = lobby { lobbyPlayers = lobbyPlayers lobby ++ [player] }

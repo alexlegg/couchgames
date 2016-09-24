@@ -5,6 +5,7 @@ module CouchGames.Manager
     , newUser
     , getUserFromSession
     , newLobby
+    , joinLobby
     , getLobbies
     , newPlayer
     , getSockets
@@ -67,6 +68,15 @@ newLobby gameType = do
                          , lobbyGame = gameType
                          , lobbyState = LSOpen
                          }
+
+joinLobby :: Int -> Int -> ManagerS ()
+joinLobby playerId lobbyId = do
+    m <- get
+    case (IMap.lookup playerId (players m)) of
+        (Just p) ->
+            put m { lobbies = IMap.adjust (addPlayer p) lobbyId (lobbies m) }
+        Nothing ->
+            return ()
 
 getLobbies :: ManagerS [Lobby]
 getLobbies = do

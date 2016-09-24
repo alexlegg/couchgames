@@ -99,8 +99,7 @@ view model =
             div [ class "container" ]
                 [ Html.h1 [] [text "Couch Games"]
                 , text model.dbgOut
-                , Html.br [] []
-                , text ("Logged in as " ++ model.username)
+                , Html.span [ class "user-info" ] [text (model.username)]
                 , Html.br [] []
                 , viewLobbyList model.lobbyList
                 , button [onClick NewGame, class "purple"] [text "New Game"]
@@ -132,7 +131,7 @@ viewLobbyList lobbies =
     in
     case lobbies of
         [] ->
-            text "There are no game lobbies"
+            div [class "card"] [text "There are no game lobbies"]
         ls ->
             div [class "card"] (List.map viewLobby ls)
 
@@ -174,9 +173,9 @@ update action model =
                         , emit (T.MsgCookie (T.SessionCookie sessId))
                         )
                     Nothing ->
-                        ( { model | dbgOut = "Cookie: " ++ cookies } , Cmd.none )
+                        ( model , Cmd.none )
             _ ->
-                ( { model | dbgOut = "Cookie: " ++ cookies } , Cmd.none )
+                ( model , Cmd.none )
     LoginMsg a ->
         let
             loginUpdateContext = { loginMsg = Just LoginSubmit, registerMsg = Just RegisterSubmit }

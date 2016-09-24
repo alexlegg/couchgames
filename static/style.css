@@ -23,7 +23,7 @@ body {
 
 h1 {
     font-family: 'Montserrat', sans-serif;
-    background-color: #311B92;
+    background-color: #3F51B5; /* #311B92; */
     color: white;
     width: 100%;
     text-align: center;
@@ -32,7 +32,7 @@ h1 {
 }
 
 .card {
-    background-color: #FFFFFF;
+    background-color: #E8EAF6; /* #FFFFFF; */
     width: 100%;
     margin: auto;
     padding: 20px;
@@ -42,13 +42,13 @@ h1 {
 
 button {
     height: 40px;
-    min-width: 250px;
+    width: 100%;
     border: 0;
     background-color: #FD8603;
     display: block;
-    border-radius: 5px;
+    /* border-radius: 5px;
     -moz-border-radius: 5px;
-    -webkit-border-radius: 5px;
+    -webkit-border-radius: 5px; */
     font-family: 'Montserrat', sans-serif;
     margin: auto;
     margin-top: 10px;
@@ -56,7 +56,7 @@ button {
 }
 
 .purple {
-    background-color: #673AB7;
+    background-color: #1A237E;
     color: white;
     font-size: 18px;
 }
@@ -67,7 +67,7 @@ button {
 }
 
 .light-purple {
-    background-color: #9575CD;
+    background-color: #3949AB;
     color: white;
     font-size: 18px;
 }
@@ -77,11 +77,16 @@ button {
     cursor: pointer;
 }
 
+.bluegrey {
+    background-color: #3F51B5;
+    color: white;
+}
+
 .login-input {
     width: 250px;
     height: 30px;
     border: 0;
-    background-color: #D1C4E9;
+    background-color: #C5CAE9;
     margin-top: 5px;
     margin-bottom: 5px;
     border-radius: 5px;
@@ -104,4 +109,10 @@ button {
 }
 :-ms-input-placeholder { /* Internet Explorer 10-11 */
    color: #757575;
+}
+
+.user-info {
+    display: block;
+    float: right;
+    font-weight: bold;
 }

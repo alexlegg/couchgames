@@ -250,7 +250,9 @@ disconnect mgr playerId = do
 handleMessage :: WS.Connection -> Connection -> STM.TVar M.Manager -> Int -> MessageFromClient -> IO ()
 handleMessage sock conn mgr playerId (MsgNewGame sessId gameType) = do
     putStrLn "MsgNewGame"
-    _ <- withManager mgr $ M.newLobby gameType 
+    withManager mgr $ do
+        lobbyId <- M.newLobby gameType 
+        M.joinLobby playerId lobbyId
 
     putStrLn "broadcast"
     broadcastLobbies mgr
