@@ -15,8 +15,12 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as M
 
+import CouchGames.ResistanceSpec
+
 main :: IO ()
-main = hspec spec
+main = hspec $ do
+    resistanceSpec
+    --spec
 
 spec :: Spec
 spec = do
