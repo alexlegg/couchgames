@@ -1,5 +1,6 @@
 module CouchGames.Util (
       shuffle
+    , selectRandom
     ) where
 
 import System.Random
@@ -20,3 +21,8 @@ swap xs a b = swap' 0 xs a b
         | a == i    = xs !! b : swap' (i+1) ys a b
         | b == i    = xs !! a : swap' (i+1) ys a b
         | otherwise = y : swap' (i+1) ys a b
+
+selectRandom :: [a] -> IO a
+selectRandom xs = do
+    i <- getStdRandom (randomR (0, (length xs) - 1))
+    return (xs !! i)
