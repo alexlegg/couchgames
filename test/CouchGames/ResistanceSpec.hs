@@ -81,8 +81,18 @@ withAction :: R.GameState -> Player -> R.Action -> (R.GameState -> Expectation) 
 withAction g p a f = do
     g' <- (gameAction R.resistance) p a g
     case g' of
-        Left err -> expectationFailure "An action failed unexpectedly"
+        Left err -> expectationFailure $ "An action failed unexpectedly (" ++ err ++ ")"
         Right gs -> f gs
+
+withActions :: R.GameState -> [(Player, R.Action)] -> (R.GameState -> Expectation) -> Expectation
+withActions g [] f          = f g
+withActions g ((p, a):as) f = withAction g p a (\g -> withActions g as f)
+
+mapFst :: (a -> c) -> (a, b) -> (c, b)
+mapFst f (a, b) = (f a, b)
+
+mapSnd :: (b -> c) -> (a, b) -> (a, c)
+mapSnd f (a, b) = (a, f b)
 
 resistanceSpec = do
 
@@ -118,16 +128,8 @@ resistanceSpec = do
             withNewGame fivePlayers R.defaultConfig $ \gs -> do
                 let lead = R.leader gs
                 let notLead = if lead == p1 then p2 else p1
-                withAction gs notLead (R.ProposeMission [p1, p2]) $ \g1 -> do
-                    g1 `shouldBe` (Left "Wrong game phase")
-
-        it "Allows a mission proposal" $ do
-            withNewGame fivePlayers R.defaultConfig $ \gs -> do
-                let lead = R.leader gs
-                withAction gs lead (R.ProposeMission [p1, p2]) $ \g1 -> do
-                    length (R.missions g1) `shouldBe` 1
-                    R.missionPlayers (head (R.missions g1)) `shouldContain` [p1, p2]
-                    R.missionTokens (head (R.missions g1)) `shouldBe` []
+                g1 <- (gameAction R.resistance) notLead (R.ProposeMission [p1, p2]) gs
+                g1 `shouldBe` (Left "Only the leader can propose a mission")
 
         it "Won't allow proposal during voting" $ do
             withNewGame fivePlayers R.defaultConfig $ \gs -> do
@@ -136,6 +138,71 @@ resistanceSpec = do
                     g2 <- (gameAction R.resistance) lead (R.ProposeMission [p1, p2]) g1
                     g2 `shouldBe` Left "Wrong game phase"
 
+        it "Allows a mission proposal" $ do
+            withNewGame fivePlayers R.defaultConfig $ \gs -> do
+                let lead = R.leader gs
+                withAction gs lead (R.ProposeMission [p1, p2]) $ \g1 -> do
+                    length (R.proposals g1) `shouldBe` 1
+                    let (proposed, votes) = last (R.proposals g1)
+                    proposed `shouldContain` [p1, p2]
+                    votes  `shouldBe` []
 
----        it "Won't allow voting before a proposal" $ do
 
+        it "Won't allow voting before a proposal" $ do
+            withNewGame fivePlayers R.defaultConfig $ \gs -> do
+                let p = head fivePlayers
+                g1 <- (gameAction R.resistance) p (R.VoteOnProposal R.Reject) gs
+                g1 `shouldBe` Left "Wrong game phase"
+
+        it "Allows voting" $ do
+            withNewGame fivePlayers R.defaultConfig $ \gs -> do
+                let lead = R.leader gs
+                withAction gs lead (R.ProposeMission [p1, p2]) $ \g1 -> do
+                    let p = head fivePlayers
+                    withAction g1 p (R.VoteOnProposal R.Reject) $ \g2 -> do
+                        fst (head (snd (head (R.proposals g2)))) `shouldBe` p
+                        snd (head (snd (head (R.proposals g2)))) `shouldBe` R.Reject
+
+        it "Won't allow double voting" $ do
+            withNewGame fivePlayers R.defaultConfig $ \gs -> do
+                let lead = R.leader gs
+                let p = head fivePlayers
+                withAction gs lead (R.ProposeMission [p1, p2]) $ \g1 -> do
+                    withAction g1 p (R.VoteOnProposal R.Reject) $ \g2 -> do
+                        g3 <- (gameAction R.resistance) p (R.VoteOnProposal R.Reject) g2
+                        g3 `shouldBe` Left "Player has already voted"
+
+        it "Rejects a proposal on a minority" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let votes = [ (fivePlayers !! 0, R.Reject)
+                            , (fivePlayers !! 1, R.Reject)
+                            , (fivePlayers !! 2, R.Reject)
+                            , (fivePlayers !! 3, R.Accept)
+                            , (fivePlayers !! 4, R.Accept)]
+                let actions = map (mapSnd R.VoteOnProposal) votes
+
+                withAction g0 lead (R.ProposeMission [p1, p2]) $ \g1 -> do
+                    withActions g1 actions $ \g2 -> do
+                        R.phase g2 `shouldBe` R.Propose
+                        R.missions g2 `shouldBe` []
+                        fst (last (R.proposals g2)) `shouldContain` [p1, p2]
+                        snd (last (R.proposals g2)) `shouldContain` votes
+
+        it "Accepts a proposal on a majority" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let votes = [ (fivePlayers !! 0, R.Reject)
+                            , (fivePlayers !! 1, R.Accept)
+                            , (fivePlayers !! 2, R.Reject)
+                            , (fivePlayers !! 3, R.Accept)
+                            , (fivePlayers !! 4, R.Accept)]
+                let actions = map (mapSnd R.VoteOnProposal) votes
+
+                withAction g0 lead (R.ProposeMission [p1, p2]) $ \g1 -> do
+                    withActions g1 actions $ \g2 -> do
+                        R.phase g2 `shouldBe` R.DoMission
+                        R.missionPlayers (last (R.missions g2)) `shouldContain` [p1, p2]
+                        R.missionTokens (last (R.missions g2)) `shouldBe` []
+                        fst (last (R.proposals g2)) `shouldContain` [p1, p2]
+                        snd (last (R.proposals g2)) `shouldContain` votes

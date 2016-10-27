@@ -5,14 +5,17 @@ module CouchGames.Resistance
     , GameConfig(..)
     , Action(..)
     , GameState(..)
+    , GamePhase(..)
     , PublicState(..)
     , HiddenState(..)
     , Role(..)
     , Mission(..)
     , MissionResult(..)
+    , ProposalVote(..)
     ) where
 
 import Data.Maybe 
+import Data.List
 
 import CouchGames.Player
 import CouchGames.Util
@@ -40,7 +43,7 @@ defaultConfig = GameConfig { commander = False, bodyGuard = False }
 
 data Action =
       ProposeMission [Player]
-    | VoteOnProposal
+    | VoteOnProposal ProposalVote
     | GoOnMission
     | Assissinate 
     deriving (Eq, Show)
@@ -141,6 +144,7 @@ playerState _ = return (HiddenState [])
 
 gameAction :: Player -> Action -> GameState -> IO (Either String GameState)
 gameAction p (ProposeMission ps) g = return (proposeMission p ps g)
+gameAction p (VoteOnProposal v) g = return (voteOnProposal p v g)
 gameAction p _ g = return (Left "Not implemented")
 
 missionComplete :: Mission -> Bool
@@ -158,9 +162,32 @@ proposeMission p ps g
     | leader g /= p             = Left "Only the leader can propose a mission"
     | isNothing r               = Left "Bad game state"
     | length ps /= fromJust r   = Left "Wrong number of players in mission proposal"
-    | otherwise                 = Right g { missions = missions g ++ [newMission]
+    | otherwise                 = Right g { proposals = proposals g ++ [(ps, [])]
                                           , phase = Vote }
     where
         m = currentMission g
         r = missionRequired (length (players g)) m
-        newMission = Mission {missionPlayers = ps, missionTokens = []}
+
+voteOnProposal :: Player -> ProposalVote -> GameState -> Either String GameState
+voteOnProposal p v g
+    | phase g /= Vote       = Left "Wrong game phase"
+    | null (proposals g)    = Left "Wrong game phase"
+    | length votes == np    = Left "Wrong game phase"
+    | isJust votedAlready   = Left "Player has already voted"
+    | length votes == np-1  
+    && accepts > rejects    = Right g { proposals = proposals'
+                                      , missions = missions g ++ [mission']
+                                      , phase = DoMission }
+    | length votes == np-1  = Right g { proposals = proposals'
+                                      , phase = Propose }
+    | otherwise             = Right g { proposals = proposals' }
+    where
+        votes = snd (last (proposals g))
+        np = length (players g)
+        votedAlready = find ((==) p . fst) votes
+        addVote (ps, vs) = (ps, vs ++ [(p, v)])
+        accepts = length $ elemIndices Accept (v : map snd votes)
+        rejects = length $ elemIndices Reject (v : map snd votes)
+        proposals' = updateLast addVote (proposals g)
+        mission' = Mission { missionPlayers = fst (last (proposals g))
+                           , missionTokens = [] }

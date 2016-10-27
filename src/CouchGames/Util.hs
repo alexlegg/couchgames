@@ -1,6 +1,9 @@
 module CouchGames.Util (
       shuffle
     , selectRandom
+    , updateLast
+    , mapFst
+    , mapSnd
     ) where
 
 import System.Random
@@ -26,3 +29,13 @@ selectRandom :: [a] -> IO a
 selectRandom xs = do
     i <- getStdRandom (randomR (0, (length xs) - 1))
     return (xs !! i)
+
+updateLast :: (a -> a) -> [a] -> [a]
+updateLast f (x:[]) = [f x]
+updateLast f (x:xs) = updateLast f xs
+
+mapFst :: (a -> c) -> (a, b) -> (c, b)
+mapFst f (a, b) = (f a, b)
+
+mapSnd :: (b -> c) -> (a, b) -> (a, c)
+mapSnd f (a, b) = (a, f b)
