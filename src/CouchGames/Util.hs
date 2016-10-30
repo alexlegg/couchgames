@@ -32,7 +32,7 @@ selectRandom xs = do
 
 updateLast :: (a -> a) -> [a] -> [a]
 updateLast f (x:[]) = [f x]
-updateLast f (x:xs) = updateLast f xs
+updateLast f (x:xs) = x : updateLast f xs
 
 mapFst :: (a -> c) -> (a, b) -> (c, b)
 mapFst f (a, b) = (f a, b)

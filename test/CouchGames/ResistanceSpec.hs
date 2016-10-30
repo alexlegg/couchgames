@@ -70,6 +70,27 @@ playersToRoles = [
         [R.Commander, R.BodyGuard, R.Resistance, R.Resistance, R.Resistance, R.Resistance, R.Assassin, R.FalseCommander, R.Spy, R.Spy])
     ]
 
+nextLeader :: Int -> Player -> Player
+nextLeader n lead
+    | lead == p1            = p2
+    | lead == p2            = p3
+    | lead == p3            = p4
+    | lead == p4            = p5
+    | n == 5 && lead == p5  = p1
+    | lead == p5            = p6
+    | n == 6 && lead == p6  = p1
+    | lead == p6            = p7
+    | n == 7 && lead == p7  = p1
+    | lead == p7            = p8
+    | n == 8 && lead == p8  = p1
+    | lead == p8            = p9
+    | n == 9 && lead == p9  = p1
+    | lead == p9            = p10
+    | lead == p10           = p1
+
+leaders :: Int -> Player -> [Player]
+leaders n lead = lead : leaders n (nextLeader n lead)
+
 withNewGame :: [Player] -> R.GameConfig -> (R.GameState -> Expectation) -> Expectation
 withNewGame ps config f = do
     g <- (initGame R.resistance) config ps
@@ -81,7 +102,11 @@ withAction :: R.GameState -> Player -> R.Action -> (R.GameState -> Expectation) 
 withAction g p a f = do
     g' <- (gameAction R.resistance) p a g
     case g' of
-        Left err -> expectationFailure $ "An action failed unexpectedly (" ++ err ++ ")"
+        Left err -> do
+            putStrLn (show p)
+            putStrLn (show a)
+            putStrLn (show g)
+            expectationFailure $ "An action failed unexpectedly (" ++ err ++ ")"
         Right gs -> f gs
 
 withActions :: R.GameState -> [(Player, R.Action)] -> (R.GameState -> Expectation) -> Expectation
@@ -206,3 +231,87 @@ resistanceSpec = do
                         R.missionTokens (last (R.missions g2)) `shouldBe` []
                         fst (last (R.proposals g2)) `shouldContain` [p1, p2]
                         snd (last (R.proposals g2)) `shouldContain` votes
+
+        it "Won't allow putting two tokens in for a mission" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let votes = [ (fivePlayers !! 0, R.Accept)
+                            , (fivePlayers !! 1, R.Accept)
+                            , (fivePlayers !! 2, R.Accept)
+                            , (fivePlayers !! 3, R.Accept)
+                            , (fivePlayers !! 4, R.Accept)]
+                let vActions = map (mapSnd R.VoteOnProposal) votes
+                let actions = (lead, R.ProposeMission [p1, p2]) 
+                            : vActions ++ [(p1, R.GoOnMission R.Succeed)]
+
+                withActions g0 actions $ \g1 -> do
+                    R.phase g1 `shouldBe` R.DoMission
+                    fst (last (R.proposals g1)) `shouldContain` [p1, p2]
+                    snd (last (R.proposals g1)) `shouldContain` votes
+
+                    g2 <- (gameAction R.resistance) p1 (R.GoOnMission R.Succeed) g1
+                    g2 `shouldBe` Left "Player has already put in a token"
+
+        it "Allows succeeding a mission" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let votes = [ (fivePlayers !! 0, R.Accept)
+                            , (fivePlayers !! 1, R.Accept)
+                            , (fivePlayers !! 2, R.Accept)
+                            , (fivePlayers !! 3, R.Accept)
+                            , (fivePlayers !! 4, R.Accept)]
+                let tokens = [ (p1, R.Succeed)
+                             , (p2, R.Succeed)]
+                let actions = (lead, R.ProposeMission [p1, p2]) 
+                            : (map (mapSnd R.VoteOnProposal) votes)
+                            ++ (map (mapSnd R.GoOnMission) tokens)
+
+                withActions g0 actions $ \g1 -> do
+                    R.phase g1 `shouldBe` R.Propose
+
+        it "Allows failing a mission" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let votes = [ (fivePlayers !! 0, R.Accept)
+                            , (fivePlayers !! 1, R.Accept)
+                            , (fivePlayers !! 2, R.Accept)
+                            , (fivePlayers !! 3, R.Accept)
+                            , (fivePlayers !! 4, R.Accept)]
+                let tokens = [ (p1, R.Succeed)
+                             , (p2, R.Fail)]
+                let actions = (lead, R.ProposeMission [p1, p2]) 
+                            : (map (mapSnd R.VoteOnProposal) votes)
+                            ++ (map (mapSnd R.GoOnMission) tokens)
+
+                withActions g0 actions $ \g1 -> do
+                    R.phase g1 `shouldBe` R.Propose
+
+        it "Won't allow a Resistance player to fail a mission" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                True `shouldBe` False
+
+        it "Allows the Resistance to win" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let missions = [[p1, p2], [p1, p2, p3], [p1, p2]]
+                let proposals = zip (leaders 5 lead) (map R.ProposeMission missions)
+                let votes = map (\p -> (p, R.VoteOnProposal R.Accept)) fivePlayers
+                let tokens = map (map (\p -> (p, R.GoOnMission R.Succeed))) missions
+
+                let actions = concat $ zipWith (\p t -> p : votes ++ t) proposals tokens
+
+                withActions g0 actions $ \g1 -> do
+                    R.phase g1 `shouldBe` R.GameOver
+
+        it "Allows the Spies to win" $ do
+            withNewGame fivePlayers R.defaultConfig $ \g0 -> do
+                let lead = R.leader g0
+                let missions = [[p1, p2], [p1, p2, p3], [p1, p2]]
+                let proposals = zip (leaders 5 lead) (map R.ProposeMission missions)
+                let votes = map (\p -> (p, R.VoteOnProposal R.Accept)) fivePlayers
+                let tokens = map (map (\p -> (p, R.GoOnMission R.Fail))) missions
+
+                let actions = concat $ zipWith (\p t -> p : votes ++ t) proposals tokens
+
+                withActions g0 actions $ \g1 -> do
+                    R.phase g1 `shouldBe` R.GameOver

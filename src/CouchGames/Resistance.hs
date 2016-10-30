@@ -10,7 +10,7 @@ module CouchGames.Resistance
     , HiddenState(..)
     , Role(..)
     , Mission(..)
-    , MissionResult(..)
+    , MissionToken(..)
     , ProposalVote(..)
     ) where
 
@@ -44,7 +44,7 @@ defaultConfig = GameConfig { commander = False, bodyGuard = False }
 data Action =
       ProposeMission [Player]
     | VoteOnProposal ProposalVote
-    | GoOnMission
+    | GoOnMission MissionToken
     | Assissinate 
     deriving (Eq, Show)
 
@@ -53,15 +53,15 @@ data ProposalVote = Accept | Reject
 
 type Proposal = ([Player], [(Player, ProposalVote)])
 
-data MissionResult = Succeed | Fail
+data MissionToken = Succeed | Fail
     deriving (Eq, Show)
 
 data Mission = Mission {
       missionPlayers :: [Player]
-    , missionTokens :: [(Player, MissionResult)]
+    , missionTokens :: [(Player, MissionToken)]
     } deriving (Eq, Show)
 
-type PublicMission = ([Player], Maybe MissionResult)
+type PublicMission = ([Player], Maybe MissionToken)
 
 data Role = Resistance | Spy | Commander | BodyGuard | FalseCommander | Assassin
     deriving (Eq, Show)
@@ -76,7 +76,26 @@ data GameState = GameState {
     , leader :: Player
     , missions :: [Mission]
     , proposals :: [Proposal]
-    } deriving (Eq, Show)
+    } deriving (Eq)
+
+instance Show GameState where
+    show g = "-------------\n"
+        ++ "Config: " ++ show (config g) ++ "\n"
+        ++ "Phase: " ++ show (phase g) ++ "\n"
+        ++ "Players: " ++ show (map (mapFst displayName) (players g)) ++ "\n"
+        ++ "Leader: " ++ show (displayName (leader g)) ++ "\n"
+        ++ "Missions: " ++ showMissions (missions g) ++ "\n"
+        ++ "Proposals: " ++ showProposals (proposals g) ++ "\n"
+        ++ "-------------"
+        where
+            showMission m = 
+                "{" ++ show (map displayName (missionPlayers m))
+                ++ ", tokens: " ++ show (map (mapFst displayName) (missionTokens m)) ++ "}"
+            showMissions ms = intercalate "\n" (map showMission ms)
+            showProposal (ps, vs) = 
+                "{" ++ show (map displayName ps)
+                ++ ", votes: " ++ show (map (mapFst displayName) vs) ++ "}"
+            showProposals ps = intercalate "\n" (map showProposal ps)
 
 data PublicState = PublicState {
       pubPlayers :: [Player]
@@ -145,6 +164,7 @@ playerState _ = return (HiddenState [])
 gameAction :: Player -> Action -> GameState -> IO (Either String GameState)
 gameAction p (ProposeMission ps) g = return (proposeMission p ps g)
 gameAction p (VoteOnProposal v) g = return (voteOnProposal p v g)
+gameAction p (GoOnMission t) g = return (goOnMission p t g)
 gameAction p _ g = return (Left "Not implemented")
 
 missionComplete :: Mission -> Bool
@@ -153,8 +173,8 @@ missionComplete m = length (missionTokens m) == length (missionPlayers m)
 currentMission :: GameState -> Int
 currentMission g
     | null (missions g)                     = 0
-    | missionComplete (last (missions g))   = length (missions g) - 1
-    | otherwise                             = length (missions g)
+    | missionComplete (last (missions g))   = length (missions g)
+    | otherwise                             = length (missions g) - 1
 
 proposeMission :: Player -> [Player] -> GameState -> Either String GameState
 proposeMission p ps g
@@ -191,3 +211,41 @@ voteOnProposal p v g
         proposals' = updateLast addVote (proposals g)
         mission' = Mission { missionPlayers = fst (last (proposals g))
                            , missionTokens = [] }
+
+goOnMission :: Player -> MissionToken -> GameState -> Either String GameState
+goOnMission p t g
+    | phase g /= DoMission          = Left "Wrong game phase"
+    | null (missions g)             = Left "Wrong game phase"
+    | not (p `elem` mPlayers)       = Left "Player is not on the mission"
+    | p `elem` (map fst mTokens)    = Left "Player has already put in a token"
+    | missionOver && gameOver       
+    && succMissions == 3
+    && commander (config g)         = Right g { missions = updateLast addToken (missions g)
+                                              , phase = Assassination }
+    | missionOver && gameOver       = Right g { missions = updateLast addToken (missions g)
+                                              , phase = GameOver }
+    | missionOver                   = Right g { missions = updateLast addToken (missions g)
+                                              , phase = Propose
+                                              , leader = nextLeader (leader g) (map fst (players g)) }
+    | otherwise                     = Right g { missions = updateLast addToken (missions g) }
+    where
+        mission = last (missions g)
+        mPlayers = missionPlayers mission
+        mTokens = missionTokens mission
+        addToken m = m { missionTokens = missionTokens m ++ [(p, t)] }
+        missionOver = length mTokens == length mPlayers - 1
+        failedMissions = length $ elemIndices Fail (map missionResult (missions g))
+        succMissions = length $ elemIndices Succeed (map missionResult (missions g))
+        gameOver = failedMissions == 3 || succMissions == 3
+
+missionResult :: Mission -> MissionToken
+missionResult m 
+    | Fail `elem` (map snd (missionTokens m))   = Fail
+    | otherwise                                 = Succeed
+
+nextLeader :: Player -> [Player] -> Player
+nextLeader curr ps = ps !! next index
+    where 
+        index           = elemIndex curr ps
+        next (Just i)   = if i == length ps - 1 then 0 else i+1
+        next Nothing    = error "Leader is not in the game"
