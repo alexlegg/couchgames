@@ -8,6 +8,7 @@ import CouchGames.Message
 import CouchGames.Session
 import CouchGames.Lobby
 import CouchGames.Player
+import qualified CouchGames.Resistance as R
 import Elm.Derive
 import Elm.Versions
 
@@ -26,4 +27,10 @@ writeElmModules = do
         , DefineElm (Proxy :: Proxy GameType)
 
         , DefineElm (Proxy :: Proxy Player)
+
+        , DefineElm (Proxy :: Proxy R.PublicMission)
+        , DefineElm (Proxy :: Proxy R.MissionToken)
+        , DefineElm (Proxy :: Proxy R.ProposalVote)
+        , DefineElm (Proxy :: Proxy R.Proposal)
+        , DefineElm (Proxy :: Proxy R.PublicState)
         ]

@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module CouchGames.Resistance
     ( Resistance
     , resistance
@@ -11,20 +12,23 @@ module CouchGames.Resistance
     , Role(..)
     , Mission(..)
     , MissionToken(..)
+    , PublicMission(..)
+    , Proposal(..)
     , ProposalVote(..)
     ) where
 
 import Data.Maybe 
 import Data.List
+import Elm.Derive
 
 import CouchGames.Player
 import CouchGames.Util
 import qualified CouchGames.Game as G
 
-type Resistance = G.Game IO GameConfig GameState Action PublicState HiddenState
+type Resistance = G.GameAPI IO GameConfig GameState Action PublicState HiddenState
 
 resistance :: Resistance
-resistance = G.Game {
+resistance = G.GameAPI {
       G.initGame = initGame
     , G.storeGame = storeGame
     , G.gameState = gameState
@@ -51,7 +55,10 @@ data Action =
 data ProposalVote = Accept | Reject
     deriving (Eq, Show)
 
-type Proposal = ([Player], [(Player, ProposalVote)])
+data Proposal = Proposal {
+      proposalPlayers :: [Player] 
+    , proposalVotes :: [(Player, ProposalVote)]
+    } deriving (Eq, Show)
 
 data MissionToken = Succeed | Fail
     deriving (Eq, Show)
@@ -61,7 +68,8 @@ data Mission = Mission {
     , missionTokens :: [(Player, MissionToken)]
     } deriving (Eq, Show)
 
-type PublicMission = ([Player], Maybe MissionToken)
+data PublicMission = PublicMission [Player] (Maybe MissionToken)
+    deriving (Eq, Show)
 
 data Role = Resistance | Spy | Commander | BodyGuard | FalseCommander | Assassin
     deriving (Eq, Show)
@@ -92,9 +100,9 @@ instance Show GameState where
                 "{" ++ show (map displayName (missionPlayers m))
                 ++ ", tokens: " ++ show (map (mapFst displayName) (missionTokens m)) ++ "}"
             showMissions ms = intercalate "\n" (map showMission ms)
-            showProposal (ps, vs) = 
-                "{" ++ show (map displayName ps)
-                ++ ", votes: " ++ show (map (mapFst displayName) vs) ++ "}"
+            showProposal p = 
+                "{" ++ show (map displayName (proposalPlayers p))
+                ++ ", votes: " ++ show (map (mapFst displayName) (proposalVotes p)) ++ "}"
             showProposals ps = intercalate "\n" (map showProposal ps)
 
 data PublicState = PublicState {
@@ -182,7 +190,7 @@ proposeMission p ps g
     | leader g /= p             = Left "Only the leader can propose a mission"
     | isNothing r               = Left "Bad game state"
     | length ps /= fromJust r   = Left "Wrong number of players in mission proposal"
-    | otherwise                 = Right g { proposals = proposals g ++ [(ps, [])]
+    | otherwise                 = Right g { proposals = proposals g ++ [Proposal ps []]
                                           , phase = Vote }
     where
         m = currentMission g
@@ -202,14 +210,14 @@ voteOnProposal p v g
                                       , phase = Propose }
     | otherwise             = Right g { proposals = proposals' }
     where
-        votes = snd (last (proposals g))
+        votes = proposalVotes (last (proposals g))
         np = length (players g)
         votedAlready = find ((==) p . fst) votes
-        addVote (ps, vs) = (ps, vs ++ [(p, v)])
+        addVote prop = prop {proposalVotes = proposalVotes prop ++ [(p, v)]}
         accepts = length $ elemIndices Accept (v : map snd votes)
         rejects = length $ elemIndices Reject (v : map snd votes)
         proposals' = updateLast addVote (proposals g)
-        mission' = Mission { missionPlayers = fst (last (proposals g))
+        mission' = Mission { missionPlayers = proposalPlayers (last (proposals g))
                            , missionTokens = [] }
 
 goOnMission :: Player -> MissionToken -> GameState -> Either String GameState
@@ -249,3 +257,9 @@ nextLeader curr ps = ps !! next index
         index           = elemIndex curr ps
         next (Just i)   = if i == length ps - 1 then 0 else i+1
         next Nothing    = error "Leader is not in the game"
+
+deriveBoth defaultOptions ''MissionToken
+deriveBoth defaultOptions ''PublicMission
+deriveBoth defaultOptions ''ProposalVote
+deriveBoth defaultOptions ''Proposal
+deriveBoth defaultOptions ''PublicState

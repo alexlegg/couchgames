@@ -20,19 +20,25 @@ import           Data.Int
 import           Control.Monad.State
 import           CouchGames.Player
 import           CouchGames.Lobby
+import           CouchGames.Game
+import qualified CouchGames.Resistance as R
 import           Web.Users.Types
 import           Network.WebSockets
+
+data Game
+    = GameResistance R.GameState
 
 -- A user may have one player
 -- A player may have many sockets
 data Manager = Manager
     { sessions      :: Map.Map T.Text (Int64, User) -- Session Ids to Users
-    , players       :: IMap.IntMap Player           -- User Ids to Players
     , sockets       :: IMap.IntMap [Connection]     -- Player Ids to Sockets
     , nextPlayerId  :: Int
-
+    , players       :: IMap.IntMap Player           -- User Ids to Players
     , nextLobbyId   :: Int
-    , lobbies       :: IMap.IntMap Lobby
+    , lobbies       :: IMap.IntMap Lobby            -- Lobby Id to Lobby
+    , nextGameId    :: Int
+    , games         :: IMap.IntMap Game             -- Game Id to Game
     }
 
 type ManagerS = State Manager
@@ -40,11 +46,13 @@ type ManagerS = State Manager
 emptyManager :: Manager
 emptyManager = Manager
     { sessions = Map.empty
-    , players = IMap.empty
     , sockets = IMap.empty
     , nextPlayerId = 1
+    , players = IMap.empty
     , nextLobbyId = 1
     , lobbies = IMap.empty
+    , nextGameId = 1
+    , games = IMap.empty
     }
 
 newUser :: Int64 -> User -> T.Text -> ManagerS ()

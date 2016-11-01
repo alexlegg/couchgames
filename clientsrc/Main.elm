@@ -225,3 +225,7 @@ handleMessage msg model =
                 model
         T.MsgLobbyList lobbies ->
             ( { model | lobbyList = lobbies }, Cmd.none )
+        T.MsgResistanceState s ->
+            ({ model | dbgOut = "Got state for Resistance" }
+            , Cmd.none
+            )

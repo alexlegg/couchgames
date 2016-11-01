@@ -1,10 +1,10 @@
 module CouchGames.Game
-    ( Game(..)
+    ( GameAPI(..)
     ) where
 
 import CouchGames.Player
 
-data Game m conf gam act pub hid = Game {
+data GameAPI m conf gam act pub hid = GameAPI {
       initGame :: conf -> [Player] -> m (Either String gam)
     , storeGame :: gam -> m ()
     , gameState :: gam -> m pub
